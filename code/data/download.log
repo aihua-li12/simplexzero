@@ -1,0 +1,61 @@
+nohup: ignoring input
+
+
+============ Start downloading AGP dataset ============
+
+
+...... Downloading contexts ......
+(√) Finished
+
+
+
+...... Downloading sample ids ......
+(√) Finished
+
+Stool	29257
+Mouth	2587
+Blood (skin prick)	1166
+Forehead	833
+skin of cheek	399
+Left Hand	397
+Right Hand	322
+Nares	202
+Vaginal mucus	149
+Torso	126
+LabControl test	112
+Mucus	98
+not provided	81
+Axilla	59
+Ear wax	59
+Tears	55
+Left leg	53
+Hair	21
+Right leg	9
+control positive	3
+
+Total samples	35988
+
+
+
+...... Downloading abundance data ......
+2109 sample ambiguities observed. Writing ambiguity mappings to: AGP.rawASV.biom.ambiguities
+(√) Finished
+
+Num samples: 31603
+Num observations: 533309
+Total count: 786420221
+Table density (fraction of non-zero values): 0.000
+
+Counts/sample summary:
+ Min: 2.000
+ Max: 596176.000
+ Median: 17334.000
+ Mean: 24884.353
+
+
+
+...... Downloading metadata ......
+(√) Finished
+
+
+======================== Done ========================

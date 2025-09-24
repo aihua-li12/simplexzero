@@ -1,0 +1,43 @@
+nohup: ignoring input
+
+
+============ Start downloading AGP dataset ============
+
+
+...... Downloading contexts ......
+Traceback (most recent call last):
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/bin/redbiom", line 8, in <module>
+    sys.exit(cli())
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/click/core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/click/core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/click/core.py", line 1697, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/click/core.py", line 1697, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/click/core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/click/core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/redbiom/commands/summarize.py", line 16, in summarize_caches
+    contexts = redbiom.summarize.contexts()
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/redbiom/summarize.py", line 20, in contexts
+    import pandas as pd
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/pandas/__init__.py", line 49, in <module>
+    from pandas.core.api import (
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/pandas/core/api.py", line 47, in <module>
+    from pandas.core.groupby import (
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/pandas/core/groupby/__init__.py", line 1, in <module>
+    from pandas.core.groupby.generic import (
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/pandas/core/groupby/generic.py", line 68, in <module>
+    from pandas.core.frame import DataFrame
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/pandas/core/frame.py", line 149, in <module>
+    from pandas.core.generic import (
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/pandas/core/generic.py", line 193, in <module>
+    from pandas.core.window import (
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/pandas/core/window/__init__.py", line 1, in <module>
+    from pandas.core.window.ewm import (
+  File "/opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/pandas/core/window/ewm.py", line 11, in <module>
+    import pandas._libs.window.aggregations as window_aggregations
+ImportError: /usr/lib/x86_64-linux-gnu/libstdc++.so.6: version `GLIBCXX_3.4.29' not found (required by /opt/conda/envs/qiime2-amplicon-2025.7/lib/python3.10/site-packages/pandas/_libs/window/aggregations.cpython-310-x86_64-linux-gnu.so)
