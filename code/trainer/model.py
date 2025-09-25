@@ -101,7 +101,7 @@ class SymmetricDirichlet(torch.nn.Module, Sampleable):
         dirich_dim: dimension of the Dirichlet distribution. 
         dirich_param: parameter of the Dirichlet distribution. 
     """
-    def __init__(self, dirich_dim:int|None, dirich_param:torch.Tensor|None=None):
+    def __init__(self, dirich_dim:int|None=None, dirich_param:torch.Tensor|None=None):
         super().__init__()
 
         if dirich_param is not None:

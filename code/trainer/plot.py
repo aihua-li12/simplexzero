@@ -17,6 +17,12 @@ from skbio.stats.ordination import pcoa
 from skbio.diversity.alpha import shannon
 import seaborn as sns
 
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.animation import FuncAnimation, PillowWriter
+import matplotlib.tri as mtri
+from typing import cast, Iterable
+from matplotlib.artist import Artist
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 
 
 class Plot():
@@ -112,4 +118,139 @@ class Plot():
             
 
 
+
+
+
+
+class PlotSimplex():
+    """Creates and saves a GIF animation of samples on simplexes.
+    Args:
+        data: samples across time, (time, samples, dims)
+        data_prior (optional): if provided, plot prior data samples on the left most subplot, (samples, dim)
+        data_true (optional): if provided, plot true data samples on the right most subplot, (samples, dim)
+        plot_save_dir: the directory to save the .gif
+        pause_seconds: seconds to pause at the last frame
+        fps: frame per second
+    """
+    def __init__(self, data:np.ndarray, 
+                 data_prior:np.ndarray|None=None,
+                 data_true:np.ndarray|None=None,
+                 title:str="Probability Path Over Simplex",
+                 plot_save_dir:str='../../result',
+                 pause_seconds:float=1.5, 
+                 fps:int=5):
+        if not os.path.exists(plot_save_dir):
+            os.makedirs(plot_save_dir, exist_ok=True)
+        
+        self.n_times = data.shape[0]
+        self.fps = fps
+        self.pause_seconds = pause_seconds
+        self.data = data
+
+        # --- Set plot ---
+        # one row of three subplots
+        if data_prior is not None and data_true is not None:
+            self.fig, (self.ax1, self.animation_ax, self.ax3) = plt.subplots(
+                1, 3, figsize=(24, 8), subplot_kw={'projection': '3d'}
+            )
+            self.ax1.tick_params(axis='both', which='major', labelsize=12)
+            self.ax3.tick_params(axis='both', which='major', labelsize=12)
+        # one single simplex
+        else:
+            self.fig = plt.figure(figsize=(10, 8))
+            self.animation_ax = cast(Axes3D, self.fig.add_subplot(111, projection='3d'))
+        
+
+        self.fig.suptitle(title, fontsize=30)
+        self.animation_ax.tick_params(axis='both', which='major', labelsize=12)
+
+        # --- Custom colormap ---
+        self.my_colors = ["mediumblue", "cornflowerblue", "lightskyblue", 
+                          "yellow", "gold", "gold", 
+                          "lightsalmon", "orangered", "red"]
+        self.custom_cmap = LinearSegmentedColormap.from_list("my_custom_cmap", self.my_colors)
+        self.alphas = np.linspace(0.7, 0.3, self.n_times)
+
+        # --- Create a custom frame sequence to add a pause at the end ---
+        self.num_pause_frames = int(self.pause_seconds * self.fps)
+        self.last_frame_index = self.n_times - 1
+        self.frame_sequence = list(range(self.n_times)) + [self.last_frame_index] * self.num_pause_frames
+        self.total_render_frames = len(self.frame_sequence)
+
+        # Class to track progress for cleaner console output
+        class ProgressTracker:
+            def __init__(self, total): self.current = 0; self.total = total
+            def step(self): self.current += 1; return self.current
+        
+        self.progress = ProgressTracker(self.total_render_frames)
+    
+        if data_prior is not None and data_true is not None:
+            # Plot the prior samples on the left axis
+            self.plot_single_simplex(self.ax1, data_prior, "Prior distribution", self.alphas[0])
+            # Plot the true samples on the right axis
+            self.plot_single_simplex(self.ax3, data_true, "True distribution", self.alphas[-1])
+        
+        ani = FuncAnimation(self.fig, self.update, frames=self.frame_sequence, interval=100)
+
+        # Add a shared colorbar for the whole figure (uncomment the following)
+        # sm = plt.cm.ScalarMappable(cmap=custom_cmap, norm=Normalize(vmin=0, vmax=1))
+        # fig.colorbar(sm, ax=[ax1, ax2, ax3], shrink=0.6, label="Custom Color Blend")
+
+        output_file = os.path.join(plot_save_dir, "simplex.gif")
+        writer = PillowWriter(fps=self.fps)
+        ani.save(output_file, writer=writer)
+        
+        print(f"\nAnimation saved successfully as '{output_file}'")
+        plt.close(self.fig)
+
+    def plot_single_simplex(self, ax:Axes3D, points:np.ndarray, 
+                            title:str, alpha:float) -> Artist:
+        """Draw a styled simplex with scatter points on a given axis
+        Args:
+            ax: plot axes
+            points: data points, (samples, dims)
+            title: title of the plot
+            alpha: transparency level
+        """
+        # Clear the axis for redrawing
+        ax.cla()
+
+        # --- Re-apply styling that gets cleared ---
+        pane_color = (0.95, 0.95, 0.95, 0.4)
+        ax.xaxis.set_pane_color(pane_color) # type: ignore
+        ax.yaxis.set_pane_color(pane_color) # type: ignore
+        ax.zaxis.set_pane_color(pane_color) # type: ignore
+        ax.grid(True)
+
+        vertices = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        tri = mtri.Triangulation(vertices[:, 0], vertices[:, 1], triangles=[[0, 1, 2]])
+        ax.plot_trisurf(tri, vertices[:, 2], color='gray', alpha=0.15, shade=False)
+        ax.plot([1,0,0,1], [0,1,0,0], [0,0,1,0], 'k-', linewidth=1.5)
+
+        # --- Set consistent viewing angle and labels ---
+        ax.view_init(elev=30., azim=45)
+        ax.set_title(title, fontsize=20)
+        ax.set_xlabel('Dim 1', fontsize=15)
+        ax.set_ylabel('Dim 2', fontsize=15)
+        ax.set_zlabel('Dim 3', fontsize=15)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.set_zlim(0, 1)
+
+        # --- Calculate colors and draw scatter plot ---
+        color_values = (points[:, 1] * 0.5) + (points[:, 2] * 1.0)
+        scatter_plot = ax.scatter(*points.T, s=15, alpha=alpha, c=color_values, cmap=self.custom_cmap)
+        
+        return scatter_plot
+
+
+    def update(self, frame_index: int) -> Iterable[Artist]:
+        current_step = self.progress.step()
+        scatter_artist = self.plot_single_simplex(
+            self.animation_ax, self.data[frame_index], f"Time step: {frame_index+1}", self.alphas[frame_index]
+        )
+        print(f"Rendering frame {current_step}/{self.total_render_frames}"+
+              f"(Data from step {frame_index + 1})...")
+        return (scatter_artist,)
+    
 
