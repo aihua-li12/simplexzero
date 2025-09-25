@@ -511,6 +511,29 @@ def FlowSampler(model:FlowMatching, n_samples:int, n_steps:int=1000) -> torch.Te
     x1 = CustomActivation()(x1)
     return x1
 
+def FlowSamplerTrajectory(model:FlowMatching, n_samples:int, n_steps:int=1000,
+                          ts:torch.Tensor|None=None) -> torch.Tensor:
+    """Generate new samples with trajectory using the flow matching model.
+    Args:
+        model: (trained) flow matching model
+        n_samples: number of samples to be generated
+        n_steps: number of steps to be used in Euler's method
+        ts: time steps, (n_timestpes,)
+    Returns:
+        generated samples, (n_samples, input dimension of the batch data)
+    """
+    ode = LearnedODE(model)
+    simulator = EulerSimulator(ode)
+    if ts is None:
+        ts = torch.linspace(0, 1, steps = n_steps).unsqueeze(-1).expand(-1, n_samples)
+    else:
+        ts = ts.unsqueeze(-1).expand(-1, n_samples)
+    p_init = SymmetricDirichlet(model.input_dim)
+    x0 = p_init.sample(n_samples)
+    x1 = simulator.simulate_with_trajectory(x0, ts)
+    # x1 = CustomActivation()(x1)/100
+    return x1
+
 
 ### ----- Probability path class -----
 
@@ -951,6 +974,33 @@ def DiffusionSampler(flow_model:FlowMatching, score_model: ScoreMatching, sigma:
     x1 = CustomActivation()(x1)
     return x1
 
+def DiffusionSamplerTrajectory(flow_model:FlowMatching, score_model: ScoreMatching, sigma:float,
+                               n_samples:int, n_steps:int=1000, 
+                               ts:torch.Tensor|None=None) -> torch.Tensor:
+    """Generate new samples using the diffusion model (flow + score).
+    Args:
+        flow_model: flow matching model 
+        score_model: score matching model
+        sigma: noise scaling the Brownian motion
+
+        n_samples: number of samples to be generated
+        n_steps: number of steps to be used in Euler's method
+        ts: time steps, (n_timestpes,)
+    Returns:
+        generated samples, (n_samples, input dimension of the batch data)
+    """
+    sde = LangevinFlowSDE(flow_model, score_model, sigma)
+    simulator = EulerMaruyamaSimulator(sde)
+    if ts is None:
+        ts = torch.linspace(0, 1, steps = n_steps).unsqueeze(-1).expand(-1, n_samples)
+    else:
+        ts = ts.unsqueeze(-1).expand(-1, n_samples)
+    p_init = SymmetricDirichlet(score_model.input_dim)
+    x0 = p_init.sample(n_samples)
+    x1 = simulator.simulate_with_trajectory(x0, ts)
+    # x1 = CustomActivation()(x1)/100
+    return x1
+
 
 
 
@@ -1003,7 +1053,7 @@ class Trainer(ABC):
                 loss.backward()
                 self.optimizer.step()
                 epoch_loss += loss.item()
-                if idx % self.batch_print_freq == 0:
+                if self.batch_print_freq is not None and idx % self.batch_print_freq == 0:
                     self._log(f"({self.device}) Batch {idx+1} training loss {loss.item():<8.4f}")
         else:
             with torch.no_grad():
@@ -1023,7 +1073,7 @@ class Trainer(ABC):
               test_loader:DataLoader|None=None, 
               lr:float=1e-3, 
               val_freq:int=1,
-              batch_print_freq:int=1) -> Dict[str, Any]:
+              batch_print_freq:int|None=None) -> Dict[str, Any]:
         """Main training function
         Args:
             n_epochs: number of epochs
@@ -1157,7 +1207,7 @@ class GANTrainer(Trainer):
 
                 epoch_loss_g += g_loss.item()
                 epoch_loss_d += d_loss.item()
-                if idx % self.batch_print_freq == 0:
+                if self.batch_print_freq is not None and idx % self.batch_print_freq == 0:
                     self._log(f"({self.device}) Batch {idx+1} " +\
                               f"Generator loss: {g_loss.item():<8.4f}" +\
                               f"Discriminator loss: {d_loss.item():<8.4f}")
@@ -1201,7 +1251,7 @@ class GANTrainer(Trainer):
               test_loader:DataLoader|None=None, 
               lr:float=1e-4, 
               val_freq:int=1,
-              batch_print_freq:int=1) -> Dict[str, Any]:
+              batch_print_freq:int|None=None) -> Dict[str, Any]:
         """Main training function
         Args:
             n_epochs: number of epochs
