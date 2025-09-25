@@ -670,7 +670,7 @@ class Alpha(ABC):
         return dt.view(-1)
 
 class Beta(ABC):
-    def __init__(self):
+    def __init__(self, **kwargs):
         # Check beta_0 = 1
         assert torch.allclose(
             self(torch.zeros(1,1)), torch.ones(1,1)
@@ -725,7 +725,7 @@ class LinearAlpha(Alpha):
 
 class SquareRootBeta(Beta):
     """beta_t = sqrt(t-1)"""
-    def __call__(self, t:torch.Tensor) -> torch.Tensor:
+    def __call__(self, t:torch.Tensor, **kwargs) -> torch.Tensor:
         """Evaluate beta_t. Should satisfy:
         self(0.0) = 1.0, self(1.0) = 0.0
         Args:
@@ -745,16 +745,22 @@ class SquareRootBeta(Beta):
         return -0.5 / (torch.sqrt(1-t) + 1e-4)
 
 class DiminishingBeta(Beta):
-    """beta_t = (exp(1-4*t)-exp(-3)) / (exp(1) - exp(-3))"""
-    def __call__(self, t:torch.Tensor) -> torch.Tensor:
+    """beta_t = (exp(1-c1*t)-c2) / (exp(1) - c2) where c2 = exp(1-c1)"""
+    def __call__(self, t:torch.Tensor, **kwargs) -> torch.Tensor:
         """
         Args:
             t: (batch_size,)
+            **kwargs: must be c=some float value
         Returns:
             beta_t: (batch_size,)
         """
-        return (torch.exp(1-4*t) - torch.exp(torch.tensor(-3))) /\
-        (torch.exp(torch.tensor(1)) - torch.exp(torch.tensor(-3)))
+        if len(kwargs) > 1:
+            c1 = torch.tensor(kwargs.values())
+        else:
+            c1 = torch.tensor(4)
+        c2 = torch.exp(1-c1)
+        return (torch.exp(1-c1*t) - c2) /\
+            (torch.exp(torch.tensor(1)) - c2)
     
     
 
@@ -1296,7 +1302,7 @@ class ScoreTrainer(Trainer):
         p_init = SymmetricDirichlet(batch_data.size(1))
         p_data = EmpiricalDistribution(batch_data)
         path = GaussianConditionalProbabilityPath(
-            p_init, p_data, alpha = LinearAlpha(), beta = DiminishingBeta()
+            p_init, p_data, alpha = LinearAlpha(), beta = SquareRootBeta()
         ).to(self.device)
 
         z = path.sample_conditioning_variable(batch_size).to(torch.float32) # (batch_size, dim)

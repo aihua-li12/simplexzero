@@ -129,6 +129,7 @@ class PlotSimplex():
         data_prior (optional): if provided, plot prior data samples on the left most subplot, (samples, dim)
         data_true (optional): if provided, plot true data samples on the right most subplot, (samples, dim)
         plot_save_dir: the directory to save the .gif
+        plot_save_name: the name to save the .gif
         pause_seconds: seconds to pause at the last frame
         fps: frame per second
     """
@@ -136,7 +137,8 @@ class PlotSimplex():
                  data_prior:np.ndarray|None=None,
                  data_true:np.ndarray|None=None,
                  title:str="Probability Path Over Simplex",
-                 plot_save_dir:str='../../result',
+                 plot_save_dir:str='../../result/static',
+                 plot_save_name:str='simplex',
                  pause_seconds:float=1.5, 
                  fps:int=5):
         if not os.path.exists(plot_save_dir):
@@ -196,7 +198,7 @@ class PlotSimplex():
         # sm = plt.cm.ScalarMappable(cmap=custom_cmap, norm=Normalize(vmin=0, vmax=1))
         # fig.colorbar(sm, ax=[ax1, ax2, ax3], shrink=0.6, label="Custom Color Blend")
 
-        output_file = os.path.join(plot_save_dir, "simplex.gif")
+        output_file = os.path.join(plot_save_dir, plot_save_name+'.gif')
         writer = PillowWriter(fps=self.fps)
         ani.save(output_file, writer=writer)
         
@@ -214,6 +216,10 @@ class PlotSimplex():
         """
         # Clear the axis for redrawing
         ax.cla()
+
+        # If input points lie outside the simplex bounds,
+        # it will be visually contained within the plot's 3D box.
+        points = np.clip(points, 0, 1)
 
         # --- Re-apply styling that gets cleared ---
         pane_color = (0.95, 0.95, 0.95, 0.4)
