@@ -312,7 +312,7 @@ class PlotCardiovascular(Plot):
         colors = [palette[0], palette[1], palette[9], palette[5], palette[3]]
         color_rectangle = 'red'
 
-        fig, axes = plt.subplots(1, len(group_names), figsize=(12, 6), sharey=True)
+        fig, axes = plt.subplots(1, len(group_names), figsize=(8, 4), sharey=True)
 
         for i in range(len(group_names)):
             group_data = pcoa_df[pcoa_df[self.cat_var]==group_names[i]]
