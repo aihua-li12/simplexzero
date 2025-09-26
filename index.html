@@ -270,49 +270,79 @@
 
 
 <section class="section">
-  <div class="container is-max-desktop">
-
-    <div class="columns is-centered">
-        <div class="column is-full-width">
+    <div class="container">
+        
+        <!-- Probability Path Section -->
+        <div>
             <h2 class="title is-3">Probability Path</h2>
 
-            <h2 class="title is-4">Flow matching</h2>
+            <h3 class="title is-4">Flow matching</h3>
             <div class="content has-text-justified">
-              <p>
-                flow matching description here flow matching description here flow matching description here flow matching description here flow matching description here flow matching description here
-              </p>
+                <p>
+                    Flow matching description here flow matching description here flow matching description here flow matching description here flow matching description here flow matching description here
+                </p>
             </div>
 
             <div class="content has-text-centered">
-              <img src="./result/static/flow_true.gif" alt="Dolly zoom visual effect created with nerfies">
+                <p class="is-size-5 has-text-weight-semibold">True Flow</p>
+                <img src="./result/static/flow_true.gif" alt="True flow GIF">
             </div>
             <div class="content has-text-centered">
-              <img src="./result/static/flow_learned.gif" alt="Dolly zoom visual effect created with nerfies">
+                <p class="is-size-5 has-text-weight-semibold">Learned Flow</p>
+                <img src="./result/static/flow_learned.gif"" alt="Learned flow GIF">
             </div>
             <br/>
 
-
-            <h2 class="title is-4">Denoising diffusion model</h2>
+            <h3 class="title is-4">Denoising diffusion model</h3>
             <div class="content has-text-justified">
-              <p>
-                flow matching description here flow matching description here flow matching description here flow matching description here flow matching description here flow matching description here
-              </p>
+                <p>
+                    Denoising diffusion description here denoising diffusion description here denoising diffusion description here denoising diffusion description here denoising diffusion description here.
+                </p>
             </div>
 
             <div class="content has-text-centered">
-              <img src="./result/static/diffusion_true.gif" alt="Dolly zoom visual effect created with nerfies">
+                <p class="is-size-5 has-text-weight-semibold">True Diffusion</p>
+                <img src="./result/static/diffusion_true.gif" alt="True diffusion GIF">
             </div>
             <div class="content has-text-centered">
-              <img src="./result/static/diffusion_learned.gif" alt="Dolly zoom visual effect created with nerfies">
+                <p class="is-size-5 has-text-weight-semibold">Learned Diffusion</p>
+                <img src="./result/static/diffusion_learned.gif" alt="Learned diffusion GIF">
             </div>
-            <br/>
         </div>
 
         <!-- Divider between major sections -->
         <hr class="is-divider">
 
         <!-- Variational AutoEncoder Section -->
-        <div class="column is-full-width">
+        <div>
+            <h2 class="title is-3">Generative Adversarial Network</h2>
+
+            <!-- This is the two-column layout for the VAE section -->
+            <div class="columns is-vcentered"> <!-- is-vcentered vertically aligns the columns -->
+
+                <!-- Left Column: Plot/Image -->
+                <div class="column is-half">
+                    <div class="content has-text-centered">
+                        <img src="./result/static/cardio_pcoa.pdf" alt="Variational AutoEncoder Plot">
+                    </div>
+                </div>
+
+                <!-- Right Column: Description -->
+                <div class="column is-half">
+                    <div class="content has-text-justified">
+                        <p>
+                            This is the description for GAN
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Divider between major sections -->
+        <hr class="is-divider">
+
+        <!-- Variational AutoEncoder Section -->
+        <div>
             <h2 class="title is-3">Variational AutoEncoder</h2>
 
             <!-- This is the two-column layout for the VAE section -->
@@ -321,7 +351,7 @@
                 <!-- Left Column: Plot/Image -->
                 <div class="column is-half">
                     <div class="content has-text-centered">
-                        <img src="./result/static/cardio_pca.pdf" alt="vae plot">
+                        <img src="./result/static/cardio_pca.pdf" alt="Variational AutoEncoder Plot">
                     </div>
                 </div>
 
@@ -329,56 +359,26 @@
                 <div class="column is-half">
                     <div class="content has-text-justified">
                         <p>
-                            This is the description for the Variational AutoEncoder (VAE)
+                            This is the description for the Variational AutoEncoder (VAE). 
                         </p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Divider between major sections -->
-        <hr class="is-divider">
-
-        <!-- GAN Section -->
-        <div class="column is-full-width">
-            <h2 class="title is-3">Generative adversarial network</h2>
-
-            <!-- This is the two-column layout for the GAN section -->
-            <div class="columns is-vcentered"> <!-- is-vcentered vertically aligns the columns -->
-
-                <!-- Left Column: Plot/Image -->
-                <div class="column is-half">
-                    <div class="content has-text-centered">
-                        <img src="./result/static/cardio_pcoa.pdf" alt="vae plot">
-                    </div>
-                </div>
-
-                <!-- Right Column: Description -->
-                <div class="column is-half">
-                    <div class="content has-text-justified">
-                        <p>
-                            This is the description for the GAN
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </div>
-
-  </div>
+    </div> <!-- End of container -->
 </section>
 
 
 <section class="section" id="BibTeX">
-  <div class="container is-max-desktop content">
-    <h2 class="title">BibTeX</h2>
-    <pre><code>@article{li2025SymbioGen,
-  author    = {A. Li and L. Ma},
-  title     = {SymbioGen: A Simplex-based Generative Model for Microbiome Abundance},
-  year      = {2025},
-}</code></pre>
-  </div>
+    <div class="container is-max-desktop content">
+      <h2 class="title">BibTeX</h2>
+      <pre><code>@article{li2025SymbioGen,
+      author    = {A. Li and L. Ma},
+      title     = {SymbioGen: A Simplex-based Generative Model for Microbiome Abundance},
+      year      = {2025},
+      }</code></pre>
+    </div>
 </section>
 
 
