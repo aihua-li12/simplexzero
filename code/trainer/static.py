@@ -1,19 +1,30 @@
+# static.py
+
 from model import *
 from data import *
+from plot import *
 import torch
-from plot import PlotSimplex
 import pandas as pd 
-import torch.nn.functional as F
-import matplotlib.pyplot as plt
 torch.manual_seed(123)
 
+
+# ================================================================================ #
+#   This script generates the plots in the webpage.                                #
+#   Different parts correspond to different plots. Run with care.                  #
+# ================================================================================ #
+
+
+
+# ========================================================== #
+#          Part 1: animation of flow and diffusion           #
+# ========================================================== #
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 tot_sample = 100000
 n_features = 3
 n_epochs = 10
 fps = 10
 
-
+# ---- True data ----
 p_true = SymmetricDirichlet(dirich_param=torch.tensor([0.1,0.1,0.1]))
 data_all = p_true.sample(tot_sample).numpy()
 dataset = AbundanceDataset(pd.DataFrame(data_all.T))
@@ -23,7 +34,6 @@ loader = loader_creator.create_loader(dataset)
 
 n_sample = 2000
 data_true = p_true.sample(n_sample).numpy()
-
 
 # ---- Flow true ----
 ts = torch.cat([torch.linspace(0, 0.5, 10), torch.linspace(0.5, 1, 20)])
@@ -67,8 +77,6 @@ PlotSimplex(flow_recon, flow_recon[0], flow_recon[-1], fps=fps,
 
 
 
-
-
 # ---- Diffusion true ----
 ts = torch.cat([torch.linspace(0.2, 0.8, 5), torch.linspace(0.85, 1, 25)])
 p_init = SymmetricDirichlet(n_features)
@@ -96,8 +104,6 @@ PlotSimplex(data,
             plot_save_name="diffusion_true")
 
 
-
-
 # ---- Diffusion learned ----
 score_model = ScoreMatching(n_features, n_resiblocks=16, hidden_dim=64, time_emb_dim=128)
 score_trainer = ScoreTrainer(score_model, device)
@@ -122,3 +128,84 @@ PlotSimplex(diffusion_recon, diffusion_recon[0], diffusion_recon[-1], fps=fps,
 
 
 
+
+
+
+
+
+# ========================================================== #
+#           Part 2: PCoA of cardiovascular of GAN            #
+# ========================================================== #
+
+# ----- 1. Load data -----
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+abundance, metadata = preprocess(tax_level="Genus", 
+                                 agg_abundance_dir="../../data/aggregation",
+                                 metadata_dir="../../data/matched")
+metadata.set_index("#SampleID", inplace=True)
+metadata = metadata[metadata['sample_type'] == 'Stool']
+
+
+# ----- 2. Select sample ids -----
+torch.manual_seed(123)
+cat_var = 'cardiovascular_disease'
+metadata.groupby(cat_var).size()
+meta_diagnosed = metadata[metadata[cat_var].str.startswith("Diagnosed")][cat_var]
+sample_ids_diagnosed = meta_diagnosed.index
+abundance_diagnosed = abundance.T.loc[sample_ids_diagnosed].T
+
+
+# ----- 3. Amplify diagnosed samples by GAN -----
+dataset = AbundanceDataset(abundance_diagnosed)
+loader_creator = AbundanceLoader(batch_size=256, drop_last=False)
+loader = loader_creator.create_loader(dataset)
+
+n_features = dataset.dim
+n_samples = 1000 # number of generated samples
+n_epochs = 5
+latent_dim = 32
+
+g_nn = Generator(latent_dim, n_features, use_batch_norm=False, n_layers=3)
+d_nn = Discriminator(n_features, use_batch_norm=False, n_layers=3)
+
+gan_trainer = GANTrainer(g_nn, d_nn, device)
+gan_losses = gan_trainer.train(n_epochs, train_loader=loader)
+gan_recon = g_nn.sample(n_samples)
+
+
+# ----- 4. Combine abundance data -----
+new_sample_ids = [f'new_sample_{i}' for i in range(n_samples)]
+new_abundance = pd.DataFrame(data=gan_recon.numpy(), index=new_sample_ids, 
+                             columns=abundance_diagnosed.T.columns)
+abundance_diagnosed = pd.concat([abundance_diagnosed.T, new_abundance])
+
+# ----- 5. Combine metadata -----
+meta_diagnosed = pd.Series("Diagnosed", 
+                           index=list(sample_ids_diagnosed) + list(new_sample_ids))
+
+# ----- 6. Combine with healthy data -----
+meta_healthy = metadata[metadata[cat_var].str.startswith("I do not")].sample(1500, random_state=42)
+meta_healthy = meta_healthy[cat_var]
+meta_healthy[:] = "Healthy"
+meta = pd.concat([meta_diagnosed, meta_healthy])
+
+abundance_healthy = abundance.T.loc[meta_healthy.index]
+data = pd.concat([abundance_diagnosed, abundance_healthy])
+
+del(abundance_diagnosed, abundance_healthy,
+    meta_diagnosed, meta_healthy, sample_ids_diagnosed, 
+    new_sample_ids, new_abundance)
+
+
+# ----- 7. Select relevant bacteria -----
+genus = ['Kocuria', 'Staphylococcus', 'Faecalibacterium', 'Enhydrobacter'] 
+data = data.loc[:,genus]
+# remove empty row
+non_empty_samples_mask = data.sum(axis=1) > 0
+data = data.loc[non_empty_samples_mask]
+meta = meta.loc[data.index].rename(cat_var)
+meta.index.name = "#SampleID"
+
+
+# ----- 8. Beta diversity and PCoA -----
+PlotCardioPCoA(data, meta, plot_save_dir='../../result/static').pcoa_plot()

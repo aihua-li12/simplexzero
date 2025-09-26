@@ -13,6 +13,7 @@ import os
 
 import matplotlib.pyplot as plt
 import skbio
+from skbio.diversity import beta_diversity
 from skbio.stats.ordination import pcoa
 from skbio.diversity.alpha import shannon
 import seaborn as sns
@@ -23,6 +24,7 @@ import matplotlib.tri as mtri
 from typing import cast, Iterable
 from matplotlib.artist import Artist
 from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.patches import Rectangle
 
 
 class Plot():
@@ -115,7 +117,6 @@ class Plot():
             plt.tight_layout()
             self._save(plot_name)
             plt.show()
-            
 
 
 
@@ -260,3 +261,69 @@ class PlotSimplex():
         return (scatter_artist,)
     
 
+class PlotCardioPCoA(Plot):
+    """PCoA plot for cardiovascular disease.
+    Note: this function should be used after neccesary 
+    data amplification and processing and subsetting.
+    Args:
+        data: (n_samples, n_features), where index are sample ids
+        meta: (n_samples,), where index are sample ids and values are disease types
+        plot_save_dir: directory to save the plot
+    """
+    def __init__(self, data:pd.DataFrame, meta:pd.Series,
+                 plot_save_dir:str|None=None, plot_name:str="cardio_pcoa"):
+        self.plot_save_dir = plot_save_dir
+        self.plot_name = plot_name
+        data.index.name = "#SampleID"
+        meta.index.name = "#SampleID"
+        self.cat_var = meta.name
+
+        bc_dist = beta_diversity("braycurtis", data, data.index)
+        pcoa_object = pcoa(bc_dist, dimensions=2, seed=42)
+        self.pcoa_df = pd.DataFrame(pcoa_object.samples)
+        self.pcoa_df.index.name = "#SampleID"
+        self.pcoa_df = self.pcoa_df.join(meta, on="#SampleID")
+
+        var_exp = np.array(pcoa_object.proportion_explained)
+        self.var_exp1 = f'Variation explained {var_exp[0]*100:.1f}%'
+        self.var_exp2 = f'Variation explained {var_exp[1]*100:.1f}%'
+    
+    def pcoa_plot(self):
+        group_names = self.pcoa_df[self.cat_var].unique()
+        palette = sns.color_palette("Paired")
+        colors = [palette[1], palette[7], palette[9], palette[5], palette[3]]
+        color_rectangle = 'red'
+
+        fig, axes = plt.subplots(1, len(group_names), figsize=(8, 4), sharey=True)
+
+        for i in range(len(group_names)):
+            group_data = self.pcoa_df[self.pcoa_df[self.cat_var]==group_names[i]]
+            ax = axes[i]
+            sns.scatterplot(
+                group_data, x='PC1', y='PC2', ax=axes[i],
+                color=colors[i], alpha=1, s=40
+            )
+            ax.set_title(group_names[i])
+            ax.grid(True, linestyle='--', alpha=0.6)
+            ax.set_xlabel('')
+            ax.set_ylabel('')
+            ax.set_xlim(-0.6, 0.6)
+            # Add rectangle
+            ax.add_patch(Rectangle(
+                xy=(-0.05, -0.05),        # Bottom-left corner (x, y)
+                width=0.62,             # Width of the rectangle
+                height=0.45,             # Height of the rectangle
+                facecolor='whitesmoke',
+                alpha=0.8,              # Transparency of the fill
+                edgecolor=color_rectangle,
+                linestyle='--',
+                linewidth=2,
+                zorder=0                # Set zorder to 0 to draw it behind the points
+            ))
+        
+        fig.suptitle('PCoA of taxa by Cardiovascular Disease', fontsize=14)
+        fig.supxlabel(f'PC1 - {self.var_exp1}', fontsize=12)
+        fig.supylabel(f'PC2 - {self.var_exp2}', fontsize=12)
+        plt.tight_layout()
+        self._save(self.plot_name)
+        plt.show()
