@@ -24,7 +24,7 @@ class CustomActivation(nn.Module):
     Args:
         epsilon: to add on the denominator for numerical stability
     """
-    def __init__(self, epsilon:float=1e-5):
+    def __init__(self, epsilon:float=0):
         super().__init__()
         self.epsilon = epsilon
 
@@ -108,7 +108,7 @@ class SymmetricDirichlet(torch.nn.Module, Sampleable):
             self.register_buffer("dirich_param", dirich_param.to(dtype=torch.float32))
 
         if dirich_dim is not None:
-            dirich_param = torch.ones(dirich_dim)/dirich_dim
+            dirich_param = torch.ones(dirich_dim)
             self.register_buffer("dirich_param", dirich_param.to(dtype=torch.float32))
 
     @property
@@ -432,38 +432,52 @@ class LearnedODE(ODE):
 
 class Simulator(ABC):
     @abstractmethod
-    def step(self, xt:torch.Tensor, t:torch.Tensor, dt:torch.Tensor) -> torch.Tensor:
+    def step(self, xt:torch.Tensor, t:torch.Tensor, dt:torch.Tensor, 
+             sigma_t:torch.Tensor|None=None) -> torch.Tensor:
         """Take one simulation step
         Args:
             xt: current state at t, (batch_size, dim)
             t: current time, (batch_size,)
             dt: change in time, (batch_size,)
+            sigma_t (optional): noise scaling the Brownian motion, (batch_size,)
         Returns:
             nxt: state at time t+dt, (batch_size, dim)
         """
         pass
 
     @torch.no_grad()
-    def simulate(self, x:torch.Tensor, ts:torch.Tensor) -> torch.Tensor:
+    def simulate(self, x:torch.Tensor, ts:torch.Tensor, 
+                 simplex_aware:bool|None, sigmas:torch.Tensor|None=None) -> torch.Tensor:
         """Simulate the state x after ts timesteps
         Args:
             x: initial state at time ts[0], (batch_size, dim)
             ts: time steps, (n_timesteps, batch_size)
+            simplex_aware: whether to simulate constrained within probability simplex
+            sigmas (optional): noise scaling the Brownian motion, (n_timesteps, batch_size)
         Returns:
             iterated x: final state at time ts[-1], (batch_size, dim)
         """
         for t_idx in range(len(ts)-1):
             t = ts[t_idx,:] # (batch_size,)
             dt = ts[t_idx+1,:] - t # (batch_size,)
-            x = self.step(x, t, dt) # (batch_size, dim)
+            if sigmas is not None:
+                sigma_t = sigmas[t_idx,:]  # (batch_size,)
+            else:
+                sigma_t = None
+            x = self.step(x, t, dt, sigma_t) # (batch_size, dim)
+            if simplex_aware: # if simplex aware, project the sample onto the simplex
+                x = CustomActivation()(x)/100
         return x
     
     @torch.no_grad()
-    def simulate_with_trajectory(self, x:torch.Tensor, ts:torch.Tensor) -> torch.Tensor:
+    def simulate_with_trajectory(self, x:torch.Tensor, ts:torch.Tensor, 
+                                 simplex_aware:bool|None, sigmas:torch.Tensor|None=None) -> torch.Tensor:
         """Simulate the trajectory of state x over ts timesteps
         Args:
             x: initial state at time ts[0], (batch_size, dim)
             ts: time steps, (n_timesteps, batch_size)
+            simplex_aware: whether to simulate constrained within probability simplex
+            sigmas (optional): noise scaling the Brownian motion, (n_timesteps, batch_size)
         Returns:
             xs: trajectory of state x over ts, (n_timestpes, batch_size, dim)
         """
@@ -472,7 +486,13 @@ class Simulator(ABC):
         for t_idx in tqdm(range(n_timesteps-1)):
             t = ts[t_idx,:]
             dt = ts[t_idx+1,:] - t
-            x = self.step(x, t, dt)
+            if sigmas is not None:
+                sigma_t = sigmas[t_idx,:]  # (batch_size,)
+            else:
+                sigma_t = None
+            x = self.step(x, t, dt, sigma_t)
+            if simplex_aware: # if simplex aware, project the sample onto the simplex
+                x = CustomActivation()(x)/100
             xs.append(x.clone())
         return torch.stack(xs, dim=0)
 
@@ -481,58 +501,62 @@ class EulerSimulator(Simulator):
     def __init__(self, ode:ODE):
         self.ode = ode 
 
-    def step(self, xt:torch.Tensor, t:torch.Tensor, dt:torch.Tensor) -> torch.Tensor:
+    def step(self, xt:torch.Tensor, t:torch.Tensor, dt:torch.Tensor,
+             sigma_t:torch.Tensor|None=None) -> torch.Tensor:
         """One simulation step using Euler method
         Args:
             xt: current state at t, (batch_size, dim)
             t: current time, (batch_size,)
             dt: change in time, (batch_size,)
+            sigma_t: keep in None
         Returns:
             nxt: state at time t+dt, (batch_size, dim)
         """
+        assert sigma_t is None
         return xt + self.ode.drift_coefficient(xt, t) * (dt.view(-1, 1))
 
 
-def FlowSampler(model:FlowMatching, n_samples:int, n_steps:int=1000) -> torch.Tensor:
-    """Generate new samples using the flow matching model.
-    Args:
-        model: (trained) flow matching model
-        n_samples: number of samples to be generated
-        n_steps: number of steps to be used in Euler's method
-    Returns:
-        generated samples, (n_samples, input dimension of the batch data)
-    """
-    ode = LearnedODE(model)
-    simulator = EulerSimulator(ode)
-    ts = torch.linspace(0, 1, steps = n_steps).unsqueeze(-1).expand(-1, n_samples)
-    p_init = SymmetricDirichlet(model.input_dim)
-    x0 = p_init.sample(n_samples)
-    x1 = simulator.simulate(x0, ts)
-    x1 = CustomActivation()(x1)
-    return x1
 
-def FlowSamplerTrajectory(model:FlowMatching, n_samples:int, n_steps:int=1000,
-                          ts:torch.Tensor|None=None) -> torch.Tensor:
-    """Generate new samples with trajectory using the flow matching model.
+class FlowSampler():
+    """Sampler of flow matching model
     Args:
         model: (trained) flow matching model
         n_samples: number of samples to be generated
-        n_steps: number of steps to be used in Euler's method
-        ts: time steps, (n_timestpes,)
-    Returns:
-        generated samples, (n_samples, input dimension of the batch data)
+        n_steps (optional): number of steps to be used in Euler's method
+        ts (optional): time steps, (n_steps,)
+        p_init (optional): initial distribution
+        simplex_aware: whether to simulate constrained within probability simplex
     """
-    ode = LearnedODE(model)
-    simulator = EulerSimulator(ode)
-    if ts is None:
-        ts = torch.linspace(0, 1, steps = n_steps).unsqueeze(-1).expand(-1, n_samples)
-    else:
-        ts = ts.unsqueeze(-1).expand(-1, n_samples)
-    p_init = SymmetricDirichlet(model.input_dim)
-    x0 = p_init.sample(n_samples)
-    x1 = simulator.simulate_with_trajectory(x0, ts)
-    # x1 = CustomActivation()(x1)/100
-    return x1
+    def __init__(self, model:FlowMatching, n_samples:int,
+                 n_steps:int|None=500,
+                 p_init:Sampleable|None=None, 
+                 ts:torch.Tensor|None=None,
+                 simplex_aware:bool=True):
+        
+        if p_init is None:
+            p_init = SymmetricDirichlet(model.input_dim)
+
+        if ts is None:
+            ts = torch.linspace(0, 1, steps = n_steps) # (n_steps,)
+        
+        self.ts = ts.unsqueeze(-1).expand(-1, n_samples) # (n_steps, n_samples)
+        
+        self.x0 = p_init.sample(n_samples)
+        self.simplex_aware = simplex_aware
+
+        self.ode = LearnedODE(model)
+        self.simulator = EulerSimulator(self.ode)
+
+    def simulate(self) -> torch.Tensor:
+        """Simulate the state x after ts timesteps"""
+        x1 = self.simulator.simulate(self.x0, self.ts, simplex_aware=self.simplex_aware)
+        return x1
+    
+    def simulate_with_trajectory(self) -> torch.Tensor:
+        """Simulate the trajectory of state x over ts timesteps"""
+        x1 = self.simulator.simulate_with_trajectory(self.x0, self.ts, simplex_aware=self.simplex_aware)
+        return x1
+
 
 
 ### ----- Probability path class -----
@@ -747,7 +771,7 @@ class LinearAlpha(Alpha):
         return torch.ones_like(t)
 
 class SquareRootBeta(Beta):
-    """beta_t = sqrt(t-1)"""
+    """beta_t = sqrt(1-t^c)"""
     def __call__(self, t:torch.Tensor, **kwargs) -> torch.Tensor:
         """Evaluate beta_t. Should satisfy:
         self(0.0) = 1.0, self(1.0) = 0.0
@@ -756,8 +780,12 @@ class SquareRootBeta(Beta):
         Returns:
             beta_t: (batch_size,)
         """
-        return torch.sqrt(1-t)
-    
+        if len(kwargs) == 1:
+            self.c = torch.tensor(kwargs.values())
+        else:
+            self.c = torch.tensor(1)
+
+        return torch.sqrt(1-t**self.c) 
     def dt(self, t:torch.Tensor) -> torch.Tensor:
         """Evaluate d{beta_t}/dt
         Args:
@@ -765,7 +793,8 @@ class SquareRootBeta(Beta):
         Returns:
             d{beta_t}/dt: (batch_size,)
         """
-        return -0.5 / (torch.sqrt(1-t) + 1e-4)
+        # return -0.5 / (torch.sqrt(1-t) + 1e-3)
+        return -self.c * t**(self.c-1) / (2 * torch.sqrt(1-t**self.c))
 
 class DiminishingBeta(Beta):
     """beta_t = (exp(1-c1*t)-c2) / (exp(1) - c2) where c2 = exp(1-c1)"""
@@ -777,14 +806,13 @@ class DiminishingBeta(Beta):
         Returns:
             beta_t: (batch_size,)
         """
-        if len(kwargs) > 1:
+        if len(kwargs) == 1:
             c1 = torch.tensor(kwargs.values())
         else:
             c1 = torch.tensor(4)
         c2 = torch.exp(1-c1)
         return (torch.exp(1-c1*t) - c2) /\
             (torch.exp(torch.tensor(1)) - c2)
-    
     
 
 
@@ -853,83 +881,98 @@ class GaussianConditionalProbabilityPath(ConditionalProbabilityPath):
 ### ----- SDE class -----
 class SDE(ABC):
     @abstractmethod
-    def drift_coefficient(self, xt:torch.Tensor, t:torch.Tensor) -> torch.Tensor:
+    def drift_coefficient(self, xt:torch.Tensor, t:torch.Tensor, sigma_t:torch.Tensor) -> torch.Tensor:
         pass 
     
     @abstractmethod
-    def diffusion_coefficient(self, xt:torch.Tensor, t:torch.Tensor) -> torch.Tensor:
+    def diffusion_coefficient(self, xt:torch.Tensor, t:torch.Tensor, sigma_t:torch.Tensor) -> torch.Tensor:
         pass 
 
 class GaussianConditionalSDE(SDE):
-    """SDE of Gaussian conditional probability path
+    """SDE of Gaussian conditional probability path according to formula (56)
     Args:
-        path: Gaussian conditional probability path
-        z: conditioning variable, (1, dim)
-        sigma: noise scaling the Brownian motion
+        score_model: score matching model
+        alpha: coefficent alpha(t)
+        beta: coefficient beta(t)
     """
-    def __init__(self, path:GaussianConditionalProbabilityPath, 
-                 z:torch.Tensor, sigma:float):
+    def __init__(self, score_model:ScoreMatching, alpha:Alpha, beta:Beta):
         super().__init__()
-        self.path = path 
-        self.z = z
-        self.sigma = sigma
+        self.score_model = score_model
+        self.alpha = alpha
+        self.beta = beta
 
-    def drift_coefficient(self, xt: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        """Return the drift coefficient: u_t(x_t|z) + 0.5 * sigma^2 * score of p_t(x_t|z)
+    def drift_coefficient(self, xt:torch.Tensor, t:torch.Tensor, sigma_t:torch.Tensor) -> torch.Tensor:
+        """Return the drift coefficient according to formula (56)
         Args:
             xt: state at time t, (batch_size, dim)
             t: time t, (batch_size,)
+            sigma_t: noise scaling the Brownian motion, (batch_size,)
         Returns:
             drift coefficient, (batch_size, dim)
         """
-        bs = xt.size(0)
-        z = self.z.expand(bs, *self.z.shape[1:]) # (batch_size, dim)
-        return self.path.conditional_vector_field(xt, z, t) + \
-        0.5 * self.sigma**2 * self.path.conditional_score(xt, z, t)
+        sigma_t = sigma_t.unsqueeze(-1) # (batch_size, 1)
+        alpha_t = self.alpha(t).unsqueeze(-1) # (batch_size, 1)
+        beta_t = self.beta(t).unsqueeze(-1) # (batch_size, 1)
+        dt_alpha_t = self.alpha.dt(t).unsqueeze(-1) # (batch_size, 1)
+        dt_beta_t = self.beta.dt(t).unsqueeze(-1) # (batch_size, 1)
 
-    def diffusion_coefficient(self, xt: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        """Return the diffusion coefficient: sigma * dW_t
+        return (beta_t**2 * dt_alpha_t / alpha_t - \
+                dt_beta_t * beta_t + 0.5 * sigma_t**2) * self.score_model(xt, t) + \
+                    dt_alpha_t / alpha_t * xt
+
+
+
+    def diffusion_coefficient(self, xt:torch.Tensor, t:torch.Tensor, sigma_t:torch.Tensor) -> torch.Tensor:
+        """Return the diffusion coefficient according to formula (56)
         Args:
             xt: state at time t, (batch_size, dim)
             t: time t, (batch_size,)
+            sigma_t: noise scaling the Brownian motion, (batch_size,)
         Returns:
             diffusion coefficient, (batch_size, dim)
         """
-        return self.sigma * torch.randn_like(xt)
+        sigma_t = sigma_t.unsqueeze(-1).expand(-1, xt.size(-1)) # (batch_size, dim)
+        # return sigma_t * torch.randn_like(xt)
+        return sigma_t
+
+
 
 class LangevinFlowSDE(SDE):
     """SDE integrating a flow model and a score model:
     Args:
         flow_model: flow matching model 
         score_model: score matching model
-        sigma: noise scaling the Brownian motion
     """
-    def __init__(self, flow_model: FlowMatching, score_model: ScoreMatching, sigma:float):
+    def __init__(self, flow_model: FlowMatching, score_model: ScoreMatching):
         super().__init__()
         self.flow_model = flow_model
         self.score_model = score_model
-        self.sigma = sigma 
     
-    def drift_coefficient(self, xt: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def drift_coefficient(self, xt:torch.Tensor, t:torch.Tensor, sigma_t:torch.Tensor) -> torch.Tensor:
         """Return the drift coefficient:
-        vector field by flow model + 0.5 * sigma^2 * score field by score model
+        vector field by flow model + 0.5 * sigma_t^2 * score field by score model
         Args:
             xt: state at time t, (batch_size, dim)
             t: time t, (batch_size,)
+            sigma_t: noise scaling the Brownian motion, (batch_size,)
         Returns:
             drift coefficient, (batch_size, dim)
         """
-        return self.flow_model(xt, t) + 0.5 * self.sigma**2 * self.score_model(xt, t)
+        sigma_t = sigma_t.unsqueeze(-1) # (batch_size, 1)
+        return self.flow_model(xt, t) + 0.5 * sigma_t**2 * self.score_model(xt, t)
     
-    def diffusion_coefficient(self, xt: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def diffusion_coefficient(self, xt:torch.Tensor, t:torch.Tensor, sigma_t:torch.Tensor) -> torch.Tensor:
         """Return the diffusion coefficient: sigma * dW_t
         Args:
             xt: state at time t, (batch_size, dim)
             t: time t, (batch_size,)
+            sigma_t: noise scaling the Brownian motion, (batch_size,)
         Returns:
             diffusion coefficient, (batch_size, dim)
         """
-        return self.sigma * torch.randn_like(xt)
+        sigma_t = sigma_t.unsqueeze(-1).expand(-1, xt.size(-1)) # (batch_size, dim)
+        # return sigma_t * torch.randn_like(xt)
+        return sigma_t
 
 
 ### ----- Simulator class -----
@@ -938,68 +981,85 @@ class EulerMaruyamaSimulator(Simulator):
     def __init__(self, sde:SDE):
         self.sde = sde 
     
-    def step(self, xt:torch.Tensor, t:torch.Tensor, dt:torch.Tensor) -> torch.Tensor:
+    def step(self, xt:torch.Tensor, t:torch.Tensor, dt:torch.Tensor, 
+             sigma_t:torch.Tensor|None=None) -> torch.Tensor:
         """One simulation step using Euler-Maruyama method
         Args:
             xt: current state at t, (batch_size, dim)
             t: current time, (batch_size,)
             dt: change in time, (batch_size,)
+            sigma_t: noise scaling the Brownian motion, (batch_size,)
         Returns:
             nxt: state at time t+dt, (batch_size, dim)
 
         """
+        assert sigma_t is not None
         dt = dt.unsqueeze(-1)
-        return xt + self.sde.drift_coefficient(xt, t) * dt +\
-        self.sde.diffusion_coefficient(xt, t) * torch.sqrt(dt) * torch.randn_like(xt)
+        return xt + self.sde.drift_coefficient(xt, t, sigma_t) * dt +\
+        self.sde.diffusion_coefficient(xt, t, sigma_t) * torch.sqrt(dt) * torch.randn_like(xt)
 
-def DiffusionSampler(flow_model:FlowMatching, score_model: ScoreMatching, sigma:float,
-                     n_samples:int, n_steps:int=1000) -> torch.Tensor:
-    """Generate new samples using the diffusion model (flow + score).
+
+
+
+
+class DiffusionSampler():
+    """Sampler of diffusion model (flow + score)
     Args:
-        flow_model: flow matching model 
         score_model: score matching model
-        sigma: noise scaling the Brownian motion
-
         n_samples: number of samples to be generated
-        n_steps: number of steps to be used in Euler's method
-    Returns:
-        generated samples, (n_samples, input dimension of the batch data)
-    """
-    sde = LangevinFlowSDE(flow_model, score_model, sigma)
-    simulator = EulerMaruyamaSimulator(sde)
-    ts = torch.linspace(0, 1, steps = n_steps).unsqueeze(-1).expand(-1, n_samples)
-    p_init = SymmetricDirichlet(score_model.input_dim)
-    x0 = p_init.sample(n_samples)
-    x1 = simulator.simulate(x0, ts)
-    x1 = CustomActivation()(x1)
-    return x1
 
-def DiffusionSamplerTrajectory(flow_model:FlowMatching, score_model: ScoreMatching, sigma:float,
-                               n_samples:int, n_steps:int=1000, 
-                               ts:torch.Tensor|None=None) -> torch.Tensor:
-    """Generate new samples using the diffusion model (flow + score).
-    Args:
-        flow_model: flow matching model 
-        score_model: score matching model
-        sigma: noise scaling the Brownian motion
-
-        n_samples: number of samples to be generated
-        n_steps: number of steps to be used in Euler's method
-        ts: time steps, (n_timestpes,)
-    Returns:
-        generated samples, (n_samples, input dimension of the batch data)
+        flow_model (optional): flow matching model. If provided, do LangevinFlowSDE().
+        sigma (optional): noise scaling the Brownian motion
+        n_steps (optional): number of steps to be used in Euler's method
+        p_init (optional): initial distribution
+        ts (optional): time steps, (n_steps,)
+        simplex_aware: whether to simulate constrained within probability simplex
     """
-    sde = LangevinFlowSDE(flow_model, score_model, sigma)
-    simulator = EulerMaruyamaSimulator(sde)
-    if ts is None:
-        ts = torch.linspace(0, 1, steps = n_steps).unsqueeze(-1).expand(-1, n_samples)
-    else:
-        ts = ts.unsqueeze(-1).expand(-1, n_samples)
-    p_init = SymmetricDirichlet(score_model.input_dim)
-    x0 = p_init.sample(n_samples)
-    x1 = simulator.simulate_with_trajectory(x0, ts)
-    # x1 = CustomActivation()(x1)/100
-    return x1
+    def __init__(self, score_model: ScoreMatching, n_samples:int, 
+                 flow_model:FlowMatching|None=None,
+                 sigma:float|torch.Tensor|None=None,
+                 n_steps:int|None=None,
+                 p_init:Sampleable|None=None, 
+                 ts:torch.Tensor|None=None,
+                 simplex_aware:bool=True):
+
+        if p_init is None:
+            p_init = SymmetricDirichlet(score_model.input_dim)
+        
+        if ts is None:
+            ts = torch.linspace(0, 1, steps = n_steps) # (n_steps,)
+        
+        self.ts = ts.unsqueeze(-1).expand(-1, n_samples) # (n_steps, n_samples)
+
+
+        if isinstance(sigma, float):
+            self.sigmas = torch.fill(torch.ones_like(self.ts), sigma) # (n_steps, n_samples)
+        elif isinstance(sigma, torch.Tensor):
+            assert len(sigma) == len(ts), "Sigma must have the same length as ts"
+            self.sigmas = sigma.unsqueeze(-1).expand(-1, n_samples)
+        else:
+            self.sigmas = 1-self.ts # (n_steps, n_samples)
+
+
+        self.x0 = p_init.sample(n_samples)
+        self.simplex_aware = simplex_aware
+
+        if flow_model is not None:
+            self.sde = LangevinFlowSDE(flow_model, score_model)
+        else:
+            self.sde = GaussianConditionalSDE(score_model, alpha = LinearAlpha(), beta = SquareRootBeta(c=1))
+        self.simulator = EulerMaruyamaSimulator(self.sde)
+
+    def simulate(self) -> torch.Tensor:
+        """Simulate the state x after ts timesteps"""
+        x1 = self.simulator.simulate(self.x0, self.ts, self.simplex_aware, self.sigmas)
+        return x1
+    
+    def simulate_with_trajectory(self) -> torch.Tensor:
+        """Simulate the trajectory of state x over ts timesteps"""
+        x1 = self.simulator.simulate_with_trajectory(self.x0, self.ts, self.simplex_aware, self.sigmas)
+        return x1
+
 
 
 
@@ -1337,7 +1397,7 @@ class FlowTrainer(Trainer):
 
         vec_field_learned = self.model(xt, t) # (batch_size, dim)
         vec_field_target = path.conditional_vector_field(xt, z, t) # (batch_size, dim)
-        return F.mse_loss(vec_field_learned, vec_field_target, reduction='mean')
+        return F.mse_loss(vec_field_learned, vec_field_target, reduction='sum')
 
 
 class ScoreTrainer(Trainer):
@@ -1350,9 +1410,10 @@ class ScoreTrainer(Trainer):
         """
         batch_size = batch_data.size(0)
         p_init = SymmetricDirichlet(batch_data.size(1))
+        # p_init = StandardNormal(batch_data.size(1))
         p_data = EmpiricalDistribution(batch_data)
         path = GaussianConditionalProbabilityPath(
-            p_init, p_data, alpha = LinearAlpha(), beta = SquareRootBeta()
+            p_init, p_data, alpha = LinearAlpha(), beta = SquareRootBeta(c=1)
         ).to(self.device)
 
         z = path.sample_conditioning_variable(batch_size).to(torch.float32) # (batch_size, dim)
@@ -1361,9 +1422,8 @@ class ScoreTrainer(Trainer):
 
         score_field_learned = self.model(xt, t) # (batch_size, dim)
         score_field_target = path.conditional_score(xt, z, t) # (batch_size, dim)
-        return F.mse_loss(score_field_learned, score_field_target, reduction='mean')
+        return F.mse_loss(score_field_learned, score_field_target, reduction='sum')
         
-
 
 
 

@@ -128,6 +128,8 @@ class PlotSimplex():
         data: samples across time, (time, samples, dims)
         data_prior (optional): if provided, plot prior data samples on the left most subplot, (samples, dim)
         data_true (optional): if provided, plot true data samples on the right most subplot, (samples, dim)
+        prior_tlt (optional): title of the subplot of prior data samples
+        true_tlt (optional): title of the subplot of true/learned data samples
         plot_save_dir: the directory to save the .gif
         plot_save_name: the name to save the .gif
         pause_seconds: seconds to pause at the last frame
@@ -136,6 +138,8 @@ class PlotSimplex():
     def __init__(self, data:np.ndarray, 
                  data_prior:np.ndarray|None=None,
                  data_true:np.ndarray|None=None,
+                 prior_tlt:str="Prior distribution",
+                 true_tlt:str="True distribution",
                  title:str="Probability Path Over Simplex",
                  plot_save_dir:str='../../result/static',
                  plot_save_name:str='simplex',
@@ -188,15 +192,11 @@ class PlotSimplex():
     
         if data_prior is not None and data_true is not None:
             # Plot the prior samples on the left axis
-            self.plot_single_simplex(self.ax1, data_prior, "Prior distribution", self.alphas[0])
+            self.plot_single_simplex(self.ax1, data_prior, prior_tlt, self.alphas[0])
             # Plot the true samples on the right axis
-            self.plot_single_simplex(self.ax3, data_true, "True distribution", self.alphas[-1])
+            self.plot_single_simplex(self.ax3, data_true, true_tlt, self.alphas[-1])
         
         ani = FuncAnimation(self.fig, self.update, frames=self.frame_sequence, interval=100)
-
-        # Add a shared colorbar for the whole figure (uncomment the following)
-        # sm = plt.cm.ScalarMappable(cmap=custom_cmap, norm=Normalize(vmin=0, vmax=1))
-        # fig.colorbar(sm, ax=[ax1, ax2, ax3], shrink=0.6, label="Custom Color Blend")
 
         output_file = os.path.join(plot_save_dir, plot_save_name+'.gif')
         writer = PillowWriter(fps=self.fps)

@@ -15,7 +15,7 @@ import seaborn as sns
 from plot import *
 
 # ----- 1. Load data -----
-device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 abundance, metadata = preprocess(tax_level="Phylum", 
                                  agg_abundance_dir="../../data/aggregation",
                                  metadata_dir="../../data/matched")
@@ -54,12 +54,14 @@ gan_recon = g_nn.sample(n_samples)
 
 
 
-
 # ----- 4. Flow -----
 flow_model = FlowMatching(n_features, n_resiblocks=5)
 flow_trainer = FlowTrainer(flow_model, device)
-flow_losses = flow_trainer.train(n_epochs, train_loader=loader, batch_print_freq=batch_print_freq)
-flow_recon = FlowSampler(flow_model, n_samples)
+flow_losses = flow_trainer.train(n_epochs, train_loader=loader)
+
+flow_sampler = FlowSampler(flow_model, n_samples, n_steps=1000, simplex_aware=False)
+flow_recon = flow_sampler.simulate()
+flow_recon = CustomActivation()(flow_recon)
 
 
 
@@ -75,7 +77,7 @@ diffusion_recon = DiffusionSampler(flow_model, score_model, sigma = 1.0, n_sampl
 # ----- 6. Evaluation -----
 x_obs = dataset.sample(n_samples)
 
-plot = Plot(x_obs, flow_recon, "../../result/diffusion")
+plot = Plot(x_obs, flow_recon, "../../result/flow")
 plot.histogram(4)
 plot.mean_variance()
 plot.sparsity()
