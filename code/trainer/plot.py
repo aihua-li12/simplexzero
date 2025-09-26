@@ -48,9 +48,9 @@ class Plot():
 
     
     def _save(self, plot_name:str) -> None:
-        """Save the plot as .pdf"""
+        """Save the plot as .png"""
         if self.plot_save_dir is not None:
-            plot_path = os.path.join(self.plot_save_dir, plot_name+".pdf")
+            plot_path = os.path.join(self.plot_save_dir, plot_name+".png")
             plt.savefig(plot_path, dpi=300)
 
 

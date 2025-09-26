@@ -202,12 +202,18 @@ del(abundance_diagnosed, abundance_healthy,
 genus = ['Kocuria', 'Staphylococcus', 'Faecalibacterium', 'Enhydrobacter'] 
 data_genus = data.loc[:,genus]
 
+
+
+
 # ==================================================================== #
 #            Part 3: PCoA of cardiovascular disease of GAN             #
 #                     (Run this after part 2)                          #
 # ==================================================================== #
 plot_cardio = PlotCardiovascular(meta, plot_save_dir='../../result/static')
 plot_cardio.pcoa_plot(data_genus, 'cardio_pcoa')
+
+
+
 
 
 
