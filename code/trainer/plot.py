@@ -331,7 +331,7 @@ class PlotCardiovascular(Plot):
             ax.add_patch(Rectangle(
                 xy=(-0.02, -0.05),        # Bottom-left corner (x, y)
                 width=0.55,             # Width of the rectangle
-                height=0.45,             # Height of the rectangle
+                height=0.42,             # Height of the rectangle
                 facecolor='whitesmoke',
                 alpha=0.8,              # Transparency of the fill
                 edgecolor=color_rectangle,
