@@ -130,12 +130,11 @@ PlotSimplex(diffusion_recon, diffusion_recon[0], diffusion_recon[-1], fps=fps,
 
 
 
+# ==================================================================== #
+#       Part 2: Amplify cardiovascular disease diagnosed samples       #
+# ==================================================================== #
 
 
-
-# ========================================================== #
-#           Part 2: PCoA of cardiovascular of GAN            #
-# ========================================================== #
 
 # ----- 1. Load data -----
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -188,24 +187,50 @@ meta_healthy = metadata[metadata[cat_var].str.startswith("I do not")].sample(150
 meta_healthy = meta_healthy[cat_var]
 meta_healthy[:] = "Healthy"
 meta = pd.concat([meta_diagnosed, meta_healthy])
+meta.name = cat_var
 
 abundance_healthy = abundance.T.loc[meta_healthy.index]
 data = pd.concat([abundance_diagnosed, abundance_healthy])
 
 del(abundance_diagnosed, abundance_healthy,
     meta_diagnosed, meta_healthy, sample_ids_diagnosed, 
-    new_sample_ids, new_abundance)
+    new_sample_ids, new_abundance, n_features, n_epochs, latent_dim, 
+    d_nn, g_nn, gan_trainer, gan_losses, gan_recon, dataset, loader_creator, loader)
 
 
 # ----- 7. Select relevant bacteria -----
 genus = ['Kocuria', 'Staphylococcus', 'Faecalibacterium', 'Enhydrobacter'] 
-data = data.loc[:,genus]
-# remove empty row
-non_empty_samples_mask = data.sum(axis=1) > 0
-data = data.loc[non_empty_samples_mask]
-meta = meta.loc[data.index].rename(cat_var)
-meta.index.name = "#SampleID"
+data_genus = data.loc[:,genus]
+
+# ==================================================================== #
+#            Part 3: PCoA of cardiovascular disease of GAN             #
+#                     (Run this after part 2)                          #
+# ==================================================================== #
+plot_cardio = PlotCardiovascular(meta, plot_save_dir='../../result/static')
+plot_cardio.pcoa_plot(data_genus, 'cardio_pcoa')
 
 
-# ----- 8. Beta diversity and PCoA -----
-PlotCardioPCoA(data, meta, plot_save_dir='../../result/static').pcoa_plot()
+
+# ==================================================================== #
+#                Part 4: Latent dimension plots of VAE                 #
+#                     (Run this after part 2)                          #
+# ==================================================================== #
+
+# ---- VAE on amplified data -----
+torch.manual_seed(123)
+dataset = AbundanceDataset(data.T)
+loader_creator = AbundanceLoader(batch_size=256, drop_last=False)
+loader = loader_creator.create_loader(dataset)
+
+n_features = dataset.dim
+n_epochs = 10
+latent_dim = 64
+
+vae = VAE(n_features, latent_dim)
+vae_trainer = VAETrainer(vae, device)
+vae_losses = vae_trainer.train(n_epochs, train_loader=loader)
+_, z, mu, _ = vae(torch.tensor(data.values, dtype=torch.float32))
+
+# ----- PCA plot -----
+plot_cardio = PlotCardiovascular(meta, plot_save_dir='../../result/static')
+plot_cardio.pca_plot(z)

@@ -25,7 +25,7 @@ from typing import cast, Iterable
 from matplotlib.artist import Artist
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.patches import Rectangle
-
+from sklearn.decomposition import PCA
 
 class Plot():
     """
@@ -261,57 +261,76 @@ class PlotSimplex():
         return (scatter_artist,)
     
 
-class PlotCardioPCoA(Plot):
-    """PCoA plot for cardiovascular disease.
+class PlotCardiovascular(Plot):
+    """PCoA and PCA plots for cardiovascular disease.
     Note: this function should be used after neccesary 
     data amplification and processing and subsetting.
     Args:
-        data: (n_samples, n_features), where index are sample ids
         meta: (n_samples,), where index are sample ids and values are disease types
         plot_save_dir: directory to save the plot
     """
-    def __init__(self, data:pd.DataFrame, meta:pd.Series,
-                 plot_save_dir:str|None=None, plot_name:str="cardio_pcoa"):
+    def __init__(self, meta:pd.Series, plot_save_dir:str|None=None):
         self.plot_save_dir = plot_save_dir
-        self.plot_name = plot_name
-        data.index.name = "#SampleID"
+        
         meta.index.name = "#SampleID"
-        self.cat_var = meta.name
+        self.meta = meta
+        self.cat_var = str(meta.name)
 
-        bc_dist = beta_diversity("braycurtis", data, data.index)
+        sns.set_style("ticks")
+    
+    def pcoa_plot(self, data_genus:pd.DataFrame, plot_name:str="cardio_pcoa"):
+        """PCoA plot.
+        Args:
+            data_genus: (n_samples, n_features), where index are sample ids 
+                        and features have been filtered to relevant taxa.
+        """
+        data_genus.index.name = "#SampleID"
+        
+        # remove empty row in data_genus
+        non_empty_samples_mask = data_genus.sum(axis=1) > 0
+        data_genus = data_genus.loc[non_empty_samples_mask]
+        
+        # select metadata that corresponds to data_genus
+        meta_genus = self.meta.loc[data_genus.index].rename(self.cat_var)
+        meta_genus.index.name = "#SampleID"
+        meta_genus.name = self.cat_var
+
+        # beta diversity
+        bc_dist = beta_diversity("braycurtis", data_genus, data_genus.index)
         pcoa_object = pcoa(bc_dist, dimensions=2, seed=42)
-        self.pcoa_df = pd.DataFrame(pcoa_object.samples)
-        self.pcoa_df.index.name = "#SampleID"
-        self.pcoa_df = self.pcoa_df.join(meta, on="#SampleID")
+        pcoa_df = pd.DataFrame(pcoa_object.samples)
+        pcoa_df.index.name = "#SampleID"
+        pcoa_df = pcoa_df.join(meta_genus, on="#SampleID")
 
         var_exp = np.array(pcoa_object.proportion_explained)
-        self.var_exp1 = f'Variation explained {var_exp[0]*100:.1f}%'
-        self.var_exp2 = f'Variation explained {var_exp[1]*100:.1f}%'
-    
-    def pcoa_plot(self):
-        group_names = self.pcoa_df[self.cat_var].unique()
+        var_exp1 = f'Variation explained {var_exp[0]*100:.1f}%'
+        var_exp2 = f'Variation explained {var_exp[1]*100:.1f}%'
+
+
+        group_names = pcoa_df[self.cat_var].unique()
         palette = sns.color_palette("Paired")
-        colors = [palette[1], palette[7], palette[9], palette[5], palette[3]]
+        colors = [palette[0], palette[1], palette[9], palette[5], palette[3]]
         color_rectangle = 'red'
 
-        fig, axes = plt.subplots(1, len(group_names), figsize=(8, 4), sharey=True)
+        fig, axes = plt.subplots(1, len(group_names), figsize=(12, 6), sharey=True)
 
         for i in range(len(group_names)):
-            group_data = self.pcoa_df[self.pcoa_df[self.cat_var]==group_names[i]]
+            group_data = pcoa_df[pcoa_df[self.cat_var]==group_names[i]]
             ax = axes[i]
             sns.scatterplot(
                 group_data, x='PC1', y='PC2', ax=axes[i],
-                color=colors[i], alpha=1, s=40
+                color=colors[i], alpha=1, s=30, 
+                edgecolor='k', linewidth=0.5
             )
             ax.set_title(group_names[i])
             ax.grid(True, linestyle='--', alpha=0.6)
             ax.set_xlabel('')
             ax.set_ylabel('')
-            ax.set_xlim(-0.6, 0.6)
+            ax.set_xlim(-0.55, 0.55)
             # Add rectangle
             ax.add_patch(Rectangle(
-                xy=(-0.05, -0.05),        # Bottom-left corner (x, y)
-                width=0.62,             # Width of the rectangle
+                xy=(-0.02, -0.05),        # Bottom-left corner (x, y)
+                width=0.55,             # Width of the rectangle
                 height=0.45,             # Height of the rectangle
                 facecolor='whitesmoke',
                 alpha=0.8,              # Transparency of the fill
@@ -321,9 +340,69 @@ class PlotCardioPCoA(Plot):
                 zorder=0                # Set zorder to 0 to draw it behind the points
             ))
         
-        fig.suptitle('PCoA of taxa by Cardiovascular Disease', fontsize=14)
-        fig.supxlabel(f'PC1 - {self.var_exp1}', fontsize=12)
-        fig.supylabel(f'PC2 - {self.var_exp2}', fontsize=12)
+        fig.suptitle('PCoA of Taxa by Cardiovascular Disease', fontsize=14)
+        fig.supxlabel(f'PC1 - {var_exp1}', fontsize=12)
+        fig.supylabel(f'PC2 - {var_exp2}', fontsize=12)
         plt.tight_layout()
-        self._save(self.plot_name)
+        self._save(plot_name)
         plt.show()
+
+    def pca_plot(self, latent_rep:torch.Tensor, plot_name:str='cardio_pca'):
+        """PCA plot of the latent representations generated by VAE
+        Args:
+            latent_rep: (n_samples, n_features), latent representation
+        """
+        pca = PCA(n_components=2)
+        pcs = pca.fit_transform(latent_rep.detach().numpy())
+        pca_df = pd.DataFrame(pcs, columns=['pc1', 'pc2'])
+        pca_df.index.name = "#SampleID"
+        pca_df.index = self.meta.index
+        pca_df = pca_df.join(self.meta, on="#SampleID")
+
+        pca.explained_variance_ratio_
+
+        var_exp = pca.explained_variance_ratio_
+        var_exp1 = f'PC1 - Variance explained {var_exp[0]*100:.1f}%'
+        var_exp2 = f'PC2 - Variance explained {var_exp[1]*100:.1f}%'
+
+
+        plt.figure(figsize=(8, 6))
+        # Get unique groups and a color palette
+        groups = pca_df[self.cat_var].unique()
+        palette = sns.color_palette("Paired", n_colors=len(groups))
+        color_map = dict(zip(groups, palette))
+
+        # 2. Draw the blurred KDE shadow for each group
+        for group, color in color_map.items():
+            # Filter data for the current group
+            group_data = pca_df[pca_df[self.cat_var] == group]
+            sns.kdeplot(
+                data=group_data, x='pc1', y='pc2',
+                color=color,
+                fill=True,       # This is the key to creating the shadow
+                alpha=0.4,       # Controls the transparency of the shadow
+                thresh=0.1,      # Hides the faint, outer edges of the density
+                levels=5,         # Number of contour levels
+                warn_singular=False
+            )
+
+        # 3. Draw the scatter plot on top of the shadows
+        sns.scatterplot(
+            data=pca_df, x='pc1', y='pc2',
+            hue=self.cat_var, palette=color_map, 
+            s=30, alpha=1,
+            edgecolor='k', linewidth=0.5,
+            legend=True 
+        )
+
+        # 4. Final plot adjustments
+        # Using dummy values for explained variance for this example
+        plt.xlabel(var_exp1, fontsize=14)
+        plt.ylabel(var_exp2, fontsize=14)
+        plt.legend(title = 'Cardiovascular Disease')
+        plt.title('PCA of Latent Representations', fontsize=18)
+        plt.grid(True, linestyle='--', alpha=0.5)
+        plt.tight_layout()
+        self._save(plot_name)
+        plt.show()
+
