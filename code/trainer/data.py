@@ -29,12 +29,9 @@ def preprocess(tax_level:str="Phylum",
         abundance:  [n_features, n_samples]
         metadata: shape [n_samples, ...]
     """
-    if tax_level == "All":
-        file_path = os.path.join(agg_abundance_dir, f"AGP.taxonomyASV.parquet")
-        abundance_tax_pl = pl.read_parquet(file_path)
-    else:
-        file_path = os.path.join(agg_abundance_dir, f"aggASV_{tax_level}.tsv")
-        abundance = pd.read_csv(file_path, sep='\t').set_index(tax_level).dropna()
+    
+    file_path = os.path.join(agg_abundance_dir, f"aggASV_{tax_level}.tsv")
+    abundance = pd.read_csv(file_path, sep='\t').set_index(tax_level).dropna()
     file_path = os.path.join(metadata_dir, "AGP.metadata.matched.tsv")
     metadata = pd.read_csv(file_path, sep="\t", header=0, low_memory=False)
     
