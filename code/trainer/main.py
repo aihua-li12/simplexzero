@@ -82,3 +82,10 @@ plot.sparsity()
 
 
 
+
+
+
+
+
+file_path = '/home/jupyter/data/aggregation/AGP.taxonomyASV.parquet'
+abundance_tax_pl = pl.read_parquet(file_path)

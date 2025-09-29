@@ -12,7 +12,7 @@ import pandas as pd
 from pandas import DataFrame
 from torch.utils.data import Dataset, DataLoader
 import torch
-
+import polars as pl
 
 # ----- Load data ----- #
 def preprocess(tax_level:str="Phylum", 
@@ -21,7 +21,7 @@ def preprocess(tax_level:str="Phylum",
                samples_threshold:int=5000) -> tuple[DataFrame, DataFrame]:
     """Extract and process abundance data and metadata. The abundance data is aggregated by taxonomic level.
     Args:
-        tax_level: One of 'Domain', 'Phylum', 'Class', 'Order', 'Family', 'Genus'.
+        tax_level: One of 'Domain', 'Phylum', 'Class', 'Order', 'Family', 'Genus', or 'All' (unaggregated data)
         agg_abundance_dir: directory of the aggregation/ folder
         metadata_dir: directory of the metadata folder
         samples_threshold (optional): Samples with reads fewer than this threshold will be removed.
@@ -29,8 +29,12 @@ def preprocess(tax_level:str="Phylum",
         abundance:  [n_features, n_samples]
         metadata: shape [n_samples, ...]
     """
-    file_path = os.path.join(agg_abundance_dir, f"aggASV_{tax_level}.tsv")
-    abundance = pd.read_csv(file_path, sep='\t').set_index(tax_level).dropna()
+    if tax_level == "All":
+        file_path = os.path.join(agg_abundance_dir, f"AGP.taxonomyASV.parquet")
+        abundance_tax_pl = pl.read_parquet(file_path)
+    else:
+        file_path = os.path.join(agg_abundance_dir, f"aggASV_{tax_level}.tsv")
+        abundance = pd.read_csv(file_path, sep='\t').set_index(tax_level).dropna()
     file_path = os.path.join(metadata_dir, "AGP.metadata.matched.tsv")
     metadata = pd.read_csv(file_path, sep="\t", header=0, low_memory=False)
     
