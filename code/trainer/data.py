@@ -66,8 +66,15 @@ class AbundanceDataset(Dataset):
     Args:
         abundance: abundance dataframe, (n_features, n_samples), with row ids being the taxonomic name
     """
-    def __init__(self, abundance:DataFrame):
-        self.features = torch.tensor(abundance.values.T).to(torch.float32)
+    def __init__(self, abundance:DataFrame, transformation:str|None=None):
+        x = torch.tensor(abundance.values.T).to(torch.float32) # (n_samples, n_features)
+        if transformation is None:
+            self.features = x
+        if transformation == "clr":
+            x += 0.5 # pseudocount
+            log_x = torch.log(x)
+            self.features = log_x - torch.mean(log_x, dim=-1, keepdim=True)
+
         
     def __len__(self):
         return self.features.shape[0]
@@ -85,9 +92,6 @@ class AbundanceDataset(Dataset):
         shuffled_indices = torch.randperm(self.features.size(0))
         sample_indices = shuffled_indices[:n_samples]
         return self.features[sample_indices]
-
-
-
     
     @property
     def dim(self):

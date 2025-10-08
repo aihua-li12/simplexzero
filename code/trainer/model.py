@@ -162,13 +162,14 @@ class StandardNormal(torch.nn.Module, Sampleable):
 # ----- VAE Architecture ----- #
 class VAE(nn.Module):
     def __init__(self, input_dim:int, latent_dim:int=2, 
-                 n_layers:int=3, use_batch_norm:bool=True):
+                 n_layers:int=3, use_batch_norm:bool=True, use_sza:bool=True):
         """VAE architecture
         Args:
             input_dim: dimension of input tensor
             latent_dim: dimension of latent space
             n_layers: number of hidden layers (from input to latent space)
             use_batch_norm: whether to use batch normaliztion
+            use_sza: whether to use SZA function for the output layer
         """
         super().__init__()
         self.latent_dim = latent_dim
@@ -200,7 +201,8 @@ class VAE(nn.Module):
                     decoder_layers.append(nn.BatchNorm1d(decoder_dims[i+1]))
                 decoder_layers.append(nn.ReLU())
             else: # final output layer
-                decoder_layers.append(CustomActivation())
+                if use_sza:
+                    decoder_layers.append(CustomActivation())
         self.decoder = nn.Sequential(*decoder_layers)
 
 
@@ -242,9 +244,10 @@ class Generator(nn.Module):
         output_dim: dimension of output vectors
         n_layers: number of layers in generator network
         use_batch_norm: whether to use batch normaliztion
+        use_sza: whether to use SZA function for the output layer
     """
     def __init__(self, latent_dim:int, output_dim:int, 
-                 n_layers:int=3, use_batch_norm:bool=True):
+                 n_layers:int=3, use_batch_norm:bool=True, use_sza:bool=True):
         super().__init__()
 
         hidden_dims = np.linspace(latent_dim, output_dim, n_layers+1, dtype=int)
@@ -257,7 +260,8 @@ class Generator(nn.Module):
                     layers.append(nn.BatchNorm1d(hidden_dims[i+1]))
                 layers.append(nn.ReLU())
             else: # final output layer
-                layers.append(CustomActivation())
+                if use_sza:
+                    layers.append(CustomActivation())
         self.model = nn.Sequential(*layers)
         self.latent_dim = latent_dim
         
@@ -1324,8 +1328,8 @@ class GANTrainer(Trainer):
         Returns:
             a dictionary containing the training, validation, and test loss.
         """
-        self.opt_g = self.get_gan_optimizer(self.generator, lr) # generator optimizer
-        self.opt_d = self.get_gan_optimizer(self.discriminator, lr) # discriminator optimizer
+        self.opt_g = self.get_gan_optimizer(self.generator, lr=lr) # generator optimizer
+        self.opt_d = self.get_gan_optimizer(self.discriminator, lr=lr) # discriminator optimizer
         self.batch_print_freq = batch_print_freq
         self.generator.train()
         self.discriminator.train()

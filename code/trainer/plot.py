@@ -8,6 +8,7 @@
 from data import *
 from model import *
 import torch
+from typing import Any, Dict
 
 import os
 
@@ -30,26 +31,38 @@ from sklearn.decomposition import PCA
 class Plot():
     """
     Args:
+        samples: dictionary containing the observed samples and reconstructed samples
         x_obs: observed samples, (n_samples, dim)
         x_recon: reconstructed samples, (n_samples, dim)
+        x_recon2 (optional): reconstructed samples (by other transformation)
         plot_save_dir: directory to save the plot
     """
-    def __init__(self, x_obs:torch.Tensor, x_recon:torch.Tensor,
-                 plot_save_dir:str|None=None, style:str="tableau-colorblind10"):
-        self.x_obs = x_obs 
-        self.x_recon = x_recon 
+    def __init__(self, 
+                 samples_dict:Dict[str,torch.Tensor]|None=None,
+                 plot_save_dir:str|None=None, 
+                 style:str="tableau-colorblind10"):
+        plt.style.use(style)
+        # Set font properties 
+        plt.rcParams.update({
+            "font.family": "serif",
+            "font.serif": ["Times New Roman"], # Explicitly prefer Times New Roman
+            "mathtext.fontset": "stix", # Math font
+        })
         self.plot_save_dir = plot_save_dir
-        self.style = style
-        if self.plot_save_dir is not None:
-            os.makedirs(self.plot_save_dir, exist_ok=True)
-        
-        self.x_list = [x_obs, x_recon]
-        self.title_list = ["observed", "reconstructed"]
 
-    
+        palette = sns.color_palette("Paired")
+        self.colors = [palette[7], palette[1], palette[1], palette[5], palette[3]]
+
+
+        if isinstance(samples_dict, dict):
+            self.x_list = list(samples_dict.values())
+            self.title_list = list(samples_dict.keys())
+            
+
     def _save(self, plot_name:str) -> None:
         """Save the plot as .png"""
         if self.plot_save_dir is not None:
+            os.makedirs(self.plot_save_dir, exist_ok=True)
             plot_path = os.path.join(self.plot_save_dir, plot_name+".png")
             plt.savefig(plot_path, dpi=300)
 
@@ -59,64 +72,138 @@ class Plot():
         Args:
             n_hist: number of histograms in one row
         """
-        with plt.style.context(self.style): 
-            fig, axes = plt.subplots(2, n_hist, figsize=(10, 4))
-            fig.suptitle('Relative Abundance of each sample', fontsize=12)
-            for i, ax in enumerate(axes[0]):
-                ax.hist(self.x_obs[i], bins=30, color='tab:blue', alpha=0.7)
-                ax.set_title(f'Observed sample {i+1}', fontsize=10)
-                ax.grid(True)
-            for i, ax in enumerate(axes[1]):
-                ax.hist(self.x_recon[i], bins=30, color='tab:orange', alpha=0.7)
-                ax.set_title(f'Reconstructed sample {i+1}', fontsize=10)
-                ax.grid(True)
-            plt.tight_layout()
-            self._save(plot_name)
-            plt.show()
+        # assert self.x_obs is not None
+        # assert self.x_recon is not None
+        # fig, axes = plt.subplots(2, n_hist, figsize=(10, 4))
+        # fig.suptitle('Relative Abundance of each sample', fontsize=12)
+        # for i, ax in enumerate(axes[0]):
+        #     ax.hist(self.x_obs[i], bins=30, color='tab:blue', alpha=0.7)
+        #     ax.set_title(f'Observed sample {i+1}', fontsize=10)
+        #     ax.grid(True)
+        # for i, ax in enumerate(axes[1]):
+        #     ax.hist(self.x_recon[i], bins=30, color='tab:orange', alpha=0.7)
+        #     ax.set_title(f'Reconstructed sample {i+1}', fontsize=10)
+        #     ax.grid(True)
+        # plt.tight_layout()
+        # self._save(plot_name)
+        # plt.show()
 
     def mean_variance(self, plot_name:str="mean-variance"):
         """Mean-variance plot"""
-        with plt.style.context(self.style): 
-            fig, axes = plt.subplots(1, 2, figsize=(8, 3))
-            fig.suptitle('Mean-variance plot', fontsize=12)
-            for i, ax in enumerate(axes):
-                epsilon = 0
-                feature_mean = self.x_list[i].mean(dim=0) + epsilon # (dim,)
-                feature_var = self.x_list[i].var(dim=0) + epsilon
-                
-                ax.scatter(feature_mean, feature_var, alpha=0.4, edgecolors='k', s=7)
-                x_line = np.linspace(min(feature_mean.min(), feature_var.min()),
-                                     max(feature_mean.max(), feature_var.max()), 100)
-                ax.plot(x_line, x_line, color='red', alpha=0.6, 
-                        linestyle='--', label='(Variance = Mean)')
-                
-                ax.set_xscale('log')
-                ax.set_yscale('log')
-                ax.set_title(f'Mean-Variance Plot ({self.title_list[i]})', fontsize=10)
-                ax.set_xlabel('Mean (log scale)', fontsize=8)
-                ax.set_ylabel('Variance (log scale)', fontsize=8)
-                ax.grid(True, which="both", ls="--", linewidth=0.3)
+        fig, axes = plt.subplots(1, len(self.x_list), figsize=(4*len(self.x_list), 3.5))
+        # fig.suptitle('Mean-variance plot', fontsize=12)
+        for i, ax in enumerate(axes):
+            epsilon = 0
+            feature_mean = self.x_list[i].mean(dim=0) + epsilon # (dim,)
+            feature_var = self.x_list[i].var(dim=0) + epsilon
+            
+            ax.scatter(feature_mean, feature_var, alpha=1, s=20, color=self.colors[i],
+                       edgecolors='k', linewidth=0.5)
+            x_line = np.linspace(min(feature_mean.min(), feature_var.min()),
+                                    max(feature_mean.max(), feature_var.max()), 100)
+            ax.plot(x_line, x_line, color='red', alpha=0.6, 
+                    linestyle='--', label='(Variance = Mean)')
+            
+            ax.set_xscale('log')
+            ax.set_yscale('log')
+            ax.set_title(self.title_list[i], fontsize=14)
+            ax.set_xlabel('Mean (log scale)', fontsize=14)
+            ax.set_ylabel('Variance (log scale)', fontsize=14)
+            ax.grid(True, which="major", ls="--", linewidth=0.3)
 
-            plt.tight_layout()
-            self._save(plot_name)
-            plt.show()
+        plt.tight_layout()
+        self._save(plot_name)
+        # plt.show()
+
+
+    def beta_diversity(self, plot_name:str="pcoa"):
+        fig, axes = plt.subplots(1, len(self.x_list), figsize=(4*len(self.x_list), 3.5))
+        for i, ax in enumerate(axes):
+            x = pd.DataFrame(self.x_list[i].numpy())
+            x = x.loc[x.sum(axis=1)>0] # remove empty row
+
+            bc_dist = beta_diversity("braycurtis", x)
+            pcoa_object = pcoa(bc_dist, dimensions=2, seed=42)
+            pcoa_df = pd.DataFrame(pcoa_object.samples)
+
+            if np.mean(pcoa_df.values[0,0]) < 0:
+                pcoa_df *= -1 # fix the sign
+
+            var_exp = np.array(pcoa_object.proportion_explained)
+            var_exp1 = f'Variation explained {var_exp[0]*100:.1f}%'
+            var_exp2 = f'Variation explained {var_exp[1]*100:.1f}%'
+
+            sns.scatterplot(
+                pcoa_df, x='PC1', y='PC2', ax=ax,
+                color=self.colors[i], alpha=1, s=20,
+                edgecolor='k', linewidth=0.5
+            )
+
+            ax.grid(True, which="major", ls="--", linewidth=0.3)
+            ax.set_title(self.title_list[i], fontsize=14)
+            ax.set_xlabel(f'PC1 - {var_exp1}', fontsize=14)
+            ax.set_ylabel(f'PC2 - {var_exp2}', fontsize=14)
+        plt.tight_layout()
+        self._save(plot_name)
+        # plt.show()
 
     def sparsity(self, plot_name:str="sparsity"):
-        with plt.style.context(self.style): 
-            plt.figure(figsize=(5, 3))
-            plt.title('Sparsity (number of zeros)', fontsize=12)
-            n_zeros_obs = (self.x_list[0]==0).sum(-1)
-            n_zeros_recon = (self.x_list[1]==0).sum(-1)
-            plt.hist(n_zeros_obs, bins=20, alpha=0.5, label = "Observed",
-                     color='tab:blue', edgecolor = "k")
-            plt.hist(n_zeros_recon, bins=20, alpha=0.5, label = "Reconstructed",
-                     color='tab:orange', edgecolor = "k")
-            plt.grid(True, which="both", ls="--", linewidth=0.3)
-            
-            plt.legend(loc='upper left', fontsize = 8)
-            plt.tight_layout()
-            self._save(plot_name)
-            plt.show()
+        plt.figure(figsize=(5, 3))
+        plt.title('Sparsity (number of zeros)', fontsize=12)
+        n_zeros_obs = (self.x_list[0]==0).sum(-1)
+        n_zeros_recon = (self.x_list[1]==0).sum(-1)
+        plt.hist(n_zeros_obs, bins=20, alpha=0.5, label = "Observed",
+                    color='tab:blue', edgecolor = "k")
+        plt.hist(n_zeros_recon, bins=20, alpha=0.5, label = "Reconstructed",
+                    color='tab:orange', edgecolor = "k")
+        plt.grid(True, which="both", ls="--", linewidth=0.3)
+        
+        plt.legend(loc='upper left', fontsize = 8)
+        plt.tight_layout()
+        self._save(plot_name)
+        plt.show()
+
+    def sza(self, plot_name:str="sza"):
+        def f(z1, z2):
+            """Calculates the function f(z)_1 = max(z1, 0) / (max(z1, 0) + max(z2, 0)).
+            Handles the case where the denominator is zero.
+            """
+            relu_z1 = np.maximum(z1, 0)
+            relu_z2 = np.maximum(z2, 0)
+            denominator = relu_z1 + relu_z2 + 1e-2
+
+            # Avoid division by zero. Where the denominator is zero, the result is undefined.
+            # We will return 0 in this case for plotting purposes.
+            # A small epsilon is added to avoid issues with floating point precision.
+            result = np.divide(relu_z1, denominator, 
+                               out=np.zeros_like(relu_z1, dtype=float), 
+                               where=denominator>1e-9)
+            return result
+        
+        z1_values = np.linspace(-5, 10, 400)
+        z2_fixed_values = [0, 0.5, 2, 5]
+
+        colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:purple']
+        linestyles = ['-', '--', ':', '-.']
+        linewidths = [0.85, 1, 1, 1]
+        _, ax = plt.subplots(figsize=(5, 2.5))
+        for z2_val, color, style, w in zip(z2_fixed_values, colors, linestyles, linewidths):
+            f_values = f(z1_values, z2_val)
+            ax.plot(z1_values, f_values, label=f'$z_2 = {z2_val}$', 
+                    linewidth=w, color=color, linestyle=style, alpha=1)
+        ax.axhline(y=1, color='tab:gray', linestyle='--', linewidth=0.9, alpha=0.5)
+        # ax.set_title('Simple-Zero Activation Function', fontsize=12)
+        ax.set_xlabel('$z_1$', fontsize=12)
+        ax.set_ylabel('$\\sigma_{\\text{sza}, 1}(\\boldsymbol{z})$', fontsize=12)
+        ax.legend(bbox_to_anchor=(1.05, 0.5), loc='center left')
+        ax.grid(True, alpha=0.1)
+
+        ax.set_ylim(-0.1, 1.1)
+
+        plt.tight_layout()
+        self._save(plot_name)
+        plt.show()
+        
 
 
 
@@ -269,14 +356,20 @@ class PlotCardiovascular(Plot):
         meta: (n_samples,), where index are sample ids and values are disease types
         plot_save_dir: directory to save the plot
     """
-    def __init__(self, meta:pd.Series, plot_save_dir:str|None=None):
+    def __init__(self, meta:pd.Series, plot_save_dir:str|None=None,
+                 style:str="tableau-colorblind10"):
+        plt.style.use(style)
+        # Set font properties 
+        plt.rcParams.update({
+            "font.family": "serif",
+            "font.serif": ["Times New Roman"], # Explicitly prefer Times New Roman
+            "mathtext.fontset": "stix", # Math font
+        })
         self.plot_save_dir = plot_save_dir
         
         meta.index.name = "#SampleID"
         self.meta = meta
         self.cat_var = str(meta.name)
-
-        sns.set_style("ticks")
     
     def pcoa_plot(self, data_genus:pd.DataFrame, plot_name:str="cardio_pcoa"):
         """PCoA plot.
@@ -366,7 +459,7 @@ class PlotCardiovascular(Plot):
         var_exp2 = f'PC2 - Variance explained {var_exp[1]*100:.1f}%'
 
 
-        plt.figure(figsize=(8, 6))
+        plt.figure(figsize=(7, 5))
         # Get unique groups and a color palette
         groups = pca_df[self.cat_var].unique()
         palette = sns.color_palette("Paired", n_colors=len(groups))
@@ -397,12 +490,17 @@ class PlotCardiovascular(Plot):
 
         # 4. Final plot adjustments
         # Using dummy values for explained variance for this example
-        plt.xlabel(var_exp1, fontsize=14)
-        plt.ylabel(var_exp2, fontsize=14)
-        plt.legend(title = 'Cardiovascular Disease')
-        plt.title('PCA of Latent Representations', fontsize=18)
+        plt.xlabel(var_exp1, fontsize=16)
+        plt.ylabel(var_exp2, fontsize=16)
+        legend = plt.legend(title='Cardiovascular Disease', loc='lower left', fontsize=16)
+        legend.get_title().set_fontsize(16)
+        # plt.title('PCA of Latent Representations', fontsize=18)
         plt.grid(True, linestyle='--', alpha=0.5)
         plt.tight_layout()
         self._save(plot_name)
         plt.show()
+
+
+
+
 

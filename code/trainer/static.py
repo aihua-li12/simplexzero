@@ -224,19 +224,32 @@ plot_cardio.pcoa_plot(data_genus, 'cardio_pcoa')
 
 # ---- VAE on amplified data -----
 torch.manual_seed(123)
-dataset = AbundanceDataset(data.T)
-loader_creator = AbundanceLoader(batch_size=256, drop_last=False)
-loader = loader_creator.create_loader(dataset)
+dataset_sza = AbundanceDataset(data.T)
+dataset_clr = AbundanceDataset(data.T, transformation='clr')
 
-n_features = dataset.dim
+loader_creator = AbundanceLoader(batch_size=256, drop_last=False)
+loader_sza = loader_creator.create_loader(dataset_sza)
+loader_clr = loader_creator.create_loader(dataset_clr)
+
+
+
+n_features = dataset_sza.dim
 n_epochs = 10
 latent_dim = 64
 
-vae = VAE(n_features, latent_dim)
-vae_trainer = VAETrainer(vae, device)
-vae_losses = vae_trainer.train(n_epochs, train_loader=loader)
-_, z, mu, _ = vae(torch.tensor(data.values, dtype=torch.float32))
+vae_sza = VAE(n_features, latent_dim)
+vae_trainer_sza = VAETrainer(vae_sza, device)
+vae_losses_sza = vae_trainer_sza.train(n_epochs, train_loader=loader_sza)
+_, z_sza, _, _ = vae_sza(torch.tensor(data.values, dtype=torch.float32))
+
+ 
+vae_clr = VAE(n_features, latent_dim)
+vae_trainer_clr = VAETrainer(vae_clr, device)
+vae_losses_clr = vae_trainer_clr.train(n_epochs, train_loader=loader_clr)
+_, z_clr, _, _ = vae_clr(torch.tensor(data.values, dtype=torch.float32))
+
 
 # ----- PCA plot -----
 plot_cardio = PlotCardiovascular(meta, plot_save_dir='../../result/static')
-plot_cardio.pca_plot(z)
+plot_cardio.pca_plot(z_sza, 'cardio_pca_sza')
+plot_cardio.pca_plot(z_clr, 'cardio_pca_clr')
