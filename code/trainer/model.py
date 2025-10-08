@@ -290,7 +290,7 @@ class Discriminator(nn.Module):
         dropout_p: dropout probability
     """
     def __init__(self, input_dim:int, n_layers:int=3, 
-                 dropout_p:float=0.3, use_batch_norm:bool=True):
+                 dropout_p:float=0., use_batch_norm:bool=False):
         super().__init__()
         
         hidden_dims = np.linspace(input_dim, 1, n_layers+1, dtype=int)
@@ -300,7 +300,7 @@ class Discriminator(nn.Module):
             if i < n_layers-1:
                 if use_batch_norm:
                     layers.append(nn.BatchNorm1d(hidden_dims[i+1]))
-                layers.append(nn.LeakyReLU(0.2))
+                layers.append(nn.ReLU())
                 layers.append(nn.Dropout(dropout_p))
             else: # final output layer
                 layers.append(nn.Sigmoid())
@@ -1243,8 +1243,8 @@ class GANTrainer(Trainer):
                 batch_size = batch_data.size(0)
 
                 # label smoothing
-                real_labels = torch.full((batch_size,), 0.9, device=self.device) # use 0.9 instead of 1.0
-                fake_labels = torch.full((batch_size,), 0.1, device=self.device) # use 0.1 instead of 0.0
+                real_labels = torch.full((batch_size,), 0.95, device=self.device) # use 0.95 instead of 1.0
+                fake_labels = torch.full((batch_size,), 0.05, device=self.device) # use 0.05 instead of 0.0
                 z = torch.randn(batch_size, latent_dim, device=self.device) # (batch_size, latent_dim)
                 fake_samples = self.generator(z) # (batch_size, d)
 

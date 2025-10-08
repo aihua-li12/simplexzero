@@ -29,22 +29,21 @@ loader_clr = loader_creator.create_loader(dataset_clr)
 # x = batch_data = next(iter(loader))
 
 
-
 n_features = dataset_sza.dim
 n_samples = 1000 # number of generated samples
 n_epochs = 10
-latent_dim = 32
+latent_dim = 12
 x_obs = dataset_sza.sample(n_samples, seed=1)
 
 
 # ----- 2. VAE -----
 torch.manual_seed(1)
-vae_sza = VAE(n_features, latent_dim, use_batch_norm=False, n_layers=4)
+vae_sza = VAE(n_features, latent_dim, use_batch_norm=True, n_layers=4)
 vae_trainer_sza = VAETrainer(vae_sza, device)
 vae_losses_sza = vae_trainer_sza.train(n_epochs, train_loader=loader_sza)
 vae_recon_sza = vae_sza.sample(n_samples)
 
-vae_clr = VAE(n_features, latent_dim, use_batch_norm=False, n_layers=4)
+vae_clr = VAE(n_features, latent_dim, use_batch_norm=True, n_layers=4)
 vae_trainer_clr = VAETrainer(vae_clr, device)
 vae_losses_clr = vae_trainer_clr.train(n_epochs, train_loader=loader_clr)
 vae_recon_clr = vae_clr.sample(n_samples)
@@ -59,26 +58,28 @@ samples_dict = {
 plot = Plot(samples_dict, "../../result/vae")
 plot.mean_variance()
 plot.beta_diversity()
-plot.stacked_bar(abundance, n_taxa=6)
+plot.stacked_bar(abundance, n_taxa=5)
 
 
 
 
 # ----- 3. GAN -----
 torch.manual_seed(1)
-g_nn_sza = Generator(latent_dim, n_features, use_batch_norm=False, n_layers=6)
-d_nn_sza = Discriminator(n_features, use_batch_norm=False, n_layers=6)
+g_nn_sza = Generator(latent_dim, n_features, n_layers=2)
+d_nn_sza = Discriminator(n_features, n_layers=2)
 gan_trainer_sza = GANTrainer(g_nn_sza, d_nn_sza, device)
 gan_losses_sza = gan_trainer_sza.train(n_epochs, train_loader=loader_sza)
 gan_recon_sza = g_nn_sza.sample(n_samples)
 
 
-g_nn_clr = Generator(latent_dim, n_features, use_batch_norm=False, n_layers=6)
-d_nn_clr = Discriminator(n_features, use_batch_norm=False, n_layers=6)
+g_nn_clr = Generator(latent_dim, n_features, n_layers=2)
+d_nn_clr = Discriminator(n_features, n_layers=2)
 gan_trainer_clr = GANTrainer(g_nn_clr, d_nn_clr, device)
 gan_losses_clr = gan_trainer_clr.train(n_epochs, train_loader=loader_clr)
 gan_recon_clr = g_nn_clr.sample(n_samples)
 gan_recon_clr = torch.softmax(gan_recon_clr, dim=-1)*100
+
+
 
 samples_dict = {
     'Observed': x_obs,
@@ -86,13 +87,21 @@ samples_dict = {
     'Reconstructed (CLR)': gan_recon_clr
 }
 plot = Plot(samples_dict, "../../result/gan")
-# plot.mean_variance()
-# plot.beta_diversity()
-
+plot.mean_variance()
+plot.beta_diversity()
 plot.stacked_bar(abundance, 5)
 
 
 
+# samples_dict = {
+#     'Observed': x_obs,
+#     'Generated (VAE)': vae_recon_sza,
+#     'Generated (GAN)': gan_recon_sza
+# }
+# plot = Plot(samples_dict, "../../result/comparison")
+# plot.mean_variance()
+
+# plot.stacked_bar(abundance, 5)
 
 
 
