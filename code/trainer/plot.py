@@ -51,7 +51,7 @@ class Plot():
         self.plot_save_dir = plot_save_dir
 
         palette = sns.color_palette("Paired")
-        self.colors = [palette[7], palette[1], palette[1], palette[5], palette[3]]
+        self.colors = [palette[7], palette[1], palette[0], palette[5], palette[3]]
 
 
         if isinstance(samples_dict, dict):
@@ -64,7 +64,7 @@ class Plot():
         if self.plot_save_dir is not None:
             os.makedirs(self.plot_save_dir, exist_ok=True)
             plot_path = os.path.join(self.plot_save_dir, plot_name+".png")
-            plt.savefig(plot_path, dpi=300)
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 
 
     def histogram(self, n_hist:int=4, plot_name:str="histogram"):
@@ -114,6 +114,7 @@ class Plot():
         plt.tight_layout()
         self._save(plot_name)
         # plt.show()
+        plt.close()
 
 
     def beta_diversity(self, plot_name:str="pcoa"):
@@ -126,7 +127,7 @@ class Plot():
             pcoa_object = pcoa(bc_dist, dimensions=2, seed=42)
             pcoa_df = pd.DataFrame(pcoa_object.samples)
 
-            if np.mean(pcoa_df.values[0,0]) < 0:
+            if np.mean(pcoa_df.values) < 0:
                 pcoa_df *= -1 # fix the sign
 
             var_exp = np.array(pcoa_object.proportion_explained)
@@ -146,6 +147,149 @@ class Plot():
         plt.tight_layout()
         self._save(plot_name)
         # plt.show()
+        plt.close()
+
+    def _prepare_stackedbar_df(self, 
+                               abundance:pd.DataFrame, 
+                               x:torch.Tensor,
+                               top_taxa_list:list,
+                               n_subset:int=1000,
+                               seed:int=123) -> pl.dataframe.frame.DataFrame:
+        """Prepare the dataframe for making the stacked bar plot.
+        Args:
+            abundance: DataFrame from `preprocess()`.
+            x: Element of `self.x_list` (e.g., x_obs, x_recon)
+            top_taxa_list: The list of taxa to be plotted
+            n_subset: Randomly subset the data and take n_subset samples. The full data is too huge to be plotted.
+            seed: The random seed to randomly subset the data.
+        Returns:
+            Returns a polar dataframe where the first column is the sample_id, 
+            and the rest of the columns are the relative abundance of different taxa in this taxonomic level.
+            Sample ids are sorted according to their relative abundance in the most abundant taxa.
+        """
+        # Create polars dataframe
+        tax_level = str(abundance.index.name)
+        df = pd.DataFrame(
+            x.numpy().T, 
+            index=abundance.index, 
+            columns=['sample'+str(i) for i in range(x.shape[0])]
+        )
+        df = pl.from_dataframe(df)
+
+        # Pivot the data longer and compute the relative abundance for each sample
+        df_rel_abun = df.unpivot(index=tax_level, variable_name='sample_id', value_name='relative_abundance')
+
+        # Group taxa into top list or 'Other'
+        df_processed = df_rel_abun.with_columns(
+            pl.when(pl.col(tax_level).is_in(top_taxa_list))
+            .then(pl.col(tax_level))
+            .otherwise(pl.lit('Other'))
+            .alias(tax_level)
+        ).group_by(['sample_id', tax_level]).agg(
+            pl.sum('relative_abundance')
+        )
+
+        # Pivot wider
+        df_plot = df_processed.pivot(index='sample_id', on=tax_level, values='relative_abundance').fill_null(0)
+
+        # Sort columns to have a consistent plotting order
+        cols = [taxon for taxon in top_taxa_list if taxon in df_plot.columns]
+        if 'Other' in df_plot.columns:
+            df_plot = df_plot.select(['sample_id'] + cols + ['Other'])
+        else:
+            df_plot = df_plot.select(['sample_id'] + cols)
+
+
+        # Randomly subset the data for plot
+        df_plot = df_plot.sample(n=n_subset, seed=seed)
+        
+        # Sort the sample ids according to their relative abundance in the most abundant taxa
+        taxa_cols = df_plot.columns[1:]
+        tax_cols_sums = df_plot[:,1:].to_numpy().sum(axis=0)
+        sort_by = taxa_cols[np.argmax(tax_cols_sums)] # most abundant taxa
+        df_plot_sorted = df_plot.sort(sort_by, descending=True)
+        
+        return df_plot_sorted
+    
+    def stacked_bar(self, abundance:pd.DataFrame, n_taxa:int=5,
+                    n_subset:int=1000, seed:int=123,
+                    plot_name:str='stacked-bar'):
+        
+        # --- Step 1: Determine top taxa ONCE from the first dataset ---
+        tax_level = str(abundance.index.name)
+        x_first = self.x_list[0]
+        df_first = pd.DataFrame(
+            x_first.numpy().T, 
+            index=abundance.index, 
+            columns=['sample'+str(i) for i in range(x_first.shape[0])]
+        )
+        df_first_pl = pl.from_dataframe(df_first)
+        df_first_means = df_first_pl.unpivot(index=tax_level, variable_name='sample_id', value_name='abundance') \
+                                    .group_by(tax_level).agg(pl.mean('abundance').alias('mean_abundance'))
+        
+        top_taxa_to_plot = df_first_means.sort('mean_abundance', descending=True) \
+                                        .head(n_taxa)[tax_level].to_list()
+        top_taxa_to_plot.sort()
+        all_taxa_for_legend = top_taxa_to_plot + ['Other']
+
+        # --- Step 2: Create a consistent color map ---
+        colors = plt.colormaps["RdYlBu"](np.linspace(0, 1, len(all_taxa_for_legend)))
+        color_map = {taxon: color for taxon, color in zip(all_taxa_for_legend, colors)}
+
+        fig, axes = plt.subplots(1, len(self.x_list), figsize=(15*len(self.x_list), 5), sharey=True)
+
+        for i, ax in enumerate(axes):
+            df_plot_sorted = self._prepare_stackedbar_df(
+                abundance, self.x_list[i], top_taxa_to_plot, n_subset, seed
+            )
+            taxa_cols = df_plot_sorted.columns[1:]
+            x_pos = np.arange(len(df_plot_sorted))
+            bottom = np.zeros(len(df_plot_sorted), dtype=np.float32)
+
+            for taxon in taxa_cols:
+                values = df_plot_sorted[taxon].to_numpy()
+                ax.bar(x_pos, values, bottom=bottom, label=taxon, width=1.0, color=color_map.get(taxon))
+                bottom += values
+            
+            tick_interval = 200
+            tick_locs = np.arange(0, len(df_plot_sorted)+1, tick_interval)
+            ax.set_xticks(tick_locs)
+            ax.set_xticklabels([str(loc) for loc in tick_locs])
+
+            ax.set_xlabel('Sample Index', fontsize=18)
+            ax.set_title(self.title_list[i], fontsize=18)
+        
+        # Set y-label only for the first subplot
+        axes[0].set_ylabel('Proportion', fontsize=18)
+        axes[0].set_ylim(0, 100)
+        
+        # --- Step 3: Create a single, shared legend for the entire figure ---
+        handles, labels = axes[0].get_legend_handles_labels()
+        # Use a dictionary to ensure legend order is correct and has no duplicates
+        by_label = dict(zip(labels, handles))
+        # Sort legend items based on the pre-defined order
+        sorted_labels = [lbl for lbl in all_taxa_for_legend if lbl in by_label]
+        sorted_handles = [by_label[lbl] for lbl in sorted_labels]
+        
+        legend = plt.legend(
+            sorted_handles, sorted_labels, 
+            title="Taxon", 
+            bbox_to_anchor=(1.01, 1.02),
+            loc='upper left', 
+            fontsize=16
+        )
+        legend.get_title().set_fontsize(18)
+
+        plt.tight_layout(rect=(0, 0, 0.9, 1))
+        
+        self._save(plot_name)
+        plt.close()
+
+
+
+
+
+
 
     def sparsity(self, plot_name:str="sparsity"):
         plt.figure(figsize=(5, 3))
@@ -200,7 +344,7 @@ class Plot():
 
         ax.set_ylim(-0.1, 1.1)
 
-        plt.tight_layout()
+        plt.tight_layout(rect=(0, 0, 1, 1))
         self._save(plot_name)
         plt.show()
         
