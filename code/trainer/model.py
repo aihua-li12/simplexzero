@@ -329,9 +329,19 @@ class ResidualBlock(nn.Module):
     """
     def __init__(self, hidden_dim: int):
         super().__init__()
-        self.fc1 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.act = nn.SiLU()
+        self.fc1 = nn.Sequential(
+            nn.GELU(),
+            nn.Linear(hidden_dim, 4*hidden_dim),
+            nn.GELU(),
+            nn.Linear(4*hidden_dim, hidden_dim)
+        )
+
+        self.fc2 = nn.Sequential(
+            nn.GELU(),
+            nn.Linear(hidden_dim, 4*hidden_dim),
+            nn.GELU(),
+            nn.Linear(4*hidden_dim, hidden_dim)
+        )
         self.norm1 = nn.LayerNorm(hidden_dim)
         self.norm2 = nn.LayerNorm(hidden_dim)
 
@@ -344,17 +354,16 @@ class ResidualBlock(nn.Module):
         Returns:
             h+residual: (batch_size, hidden_dim)
         """
-        h = self.norm1(x) # pre-norm
-        h = self.act(h)
+        h = self.norm1(x)
         h = self.fc1(h)
 
         h = h + t_embedding
 
-        h = self.norm2(x)
-        h = self.act(h)
+        h = self.norm2(h)
         h = self.fc2(h)
 
         return h + x
+    
 
 
 class FlowMatching(nn.Module):
@@ -539,6 +548,7 @@ class FlowSampler():
         
         if p_init is None:
             p_init = SymmetricDirichlet(model.input_dim)
+            # p_init = StandardNormal(model.input_dim)
 
         if ts is None:
             ts = torch.linspace(0, 1, steps = n_steps) # (n_steps,)
@@ -682,8 +692,8 @@ class ScoreMatching(nn.Module):
             h = block(h, t_embedding)
 
         h = self.output_norm(h)
-        learned_vec_field = self.output_layer(h) # (batch_size, input_dim)
-        return learned_vec_field
+        learned_score_field = self.output_layer(h) # (batch_size, input_dim)
+        return learned_score_field
     
 
 ### ----- Coefficient class -----
@@ -797,8 +807,7 @@ class SquareRootBeta(Beta):
         Returns:
             d{beta_t}/dt: (batch_size,)
         """
-        # return -0.5 / (torch.sqrt(1-t) + 1e-3)
-        return -self.c * t**(self.c-1) / (2 * torch.sqrt(1-t**self.c))
+        return -self.c * t**(self.c-1) / (2 * torch.sqrt(1-t**self.c) + 1e-3)
 
 class DiminishingBeta(Beta):
     """beta_t = (exp(1-c1*t)-c2) / (exp(1) - c2) where c2 = exp(1-c1)"""
@@ -822,7 +831,7 @@ class DiminishingBeta(Beta):
 
 ### ----- Probability path class -----
 class GaussianConditionalProbabilityPath(ConditionalProbabilityPath):
-    """Gaussian conditional probability path:
+    """Gaussian conditional probability path (37):
     p_t(x|z) = N(alpha_t * z, beta_t^2 * I_d)
     """
     def __init__(self, p_init:Sampleable, p_true:Sampleable,
@@ -880,7 +889,8 @@ class GaussianConditionalProbabilityPath(ConditionalProbabilityPath):
         """
         alpha_t = self.alpha(t).unsqueeze(-1) # (batch_size, 1)
         beta_t = self.beta(t).unsqueeze(-1) # (batch_size, 1)
-        return (z * alpha_t - xt) / beta_t**2
+        return (z * alpha_t - xt) / beta_t
+        # return (z * alpha_t - xt)
 
 ### ----- SDE class -----
 class SDE(ABC):
@@ -1029,6 +1039,7 @@ class DiffusionSampler():
 
         if p_init is None:
             p_init = SymmetricDirichlet(score_model.input_dim)
+            # p_init = StandardNormal(score_model.input_dim)
         
         if ts is None:
             ts = torch.linspace(0, 1, steps = n_steps) # (n_steps,)
@@ -1051,7 +1062,7 @@ class DiffusionSampler():
         if flow_model is not None:
             self.sde = LangevinFlowSDE(flow_model, score_model)
         else:
-            self.sde = GaussianConditionalSDE(score_model, alpha = LinearAlpha(), beta = SquareRootBeta(c=1))
+            self.sde = GaussianConditionalSDE(score_model, alpha=LinearAlpha(), beta=SquareRootBeta())
         self.simulator = EulerMaruyamaSimulator(self.sde)
 
     def simulate(self) -> torch.Tensor:
@@ -1175,8 +1186,9 @@ class Trainer(ABC):
             if self.is_main_process and epoch % val_freq == 0: # print out epoch loss
                 self._log(log_message)
 
+        self.model.eval()
+
         if test_loader is not None: # test set
-            self.model.eval()
             test_loss = self.get_epoch_loss(test_loader, is_train=False).cpu()
             self._log(f'Final test loss: {float(test_loss):.2f}')
 
@@ -1365,9 +1377,10 @@ class GANTrainer(Trainer):
             if self.is_main_process and epoch % val_freq == 0: # print out epoch loss
                 self._log(log_message)
 
+        self.generator.eval()
+        self.discriminator.eval()
+
         if test_loader is not None: # test set
-            self.generator.eval()
-            self.discriminator.eval()
             test_loss_g, test_loss_d = self.get_gan_epoch_loss(test_loader, is_train=False)
             self._log(f'Final test generator loss: {float(test_loss_g):.4f}, discriminator loss {float(test_loss_d):.4f}')
 
@@ -1393,6 +1406,7 @@ class FlowTrainer(Trainer):
         """
         batch_size = batch_data.size(0)
         p_init = SymmetricDirichlet(batch_data.size(1))
+        # p_init = StandardNormal(batch_data.size(1))
         p_data = EmpiricalDistribution(batch_data)
         path = LinearConditionalProbabilityPath(p_init, p_data)
         z = path.sample_conditioning_variable(batch_size).to(torch.float32) # (batch_size, dim)
@@ -1401,7 +1415,7 @@ class FlowTrainer(Trainer):
 
         vec_field_learned = self.model(xt, t) # (batch_size, dim)
         vec_field_target = path.conditional_vector_field(xt, z, t) # (batch_size, dim)
-        return F.mse_loss(vec_field_learned, vec_field_target, reduction='sum')
+        return F.mse_loss(vec_field_learned, vec_field_target, reduction='mean')
 
 
 class ScoreTrainer(Trainer):
@@ -1417,7 +1431,8 @@ class ScoreTrainer(Trainer):
         # p_init = StandardNormal(batch_data.size(1))
         p_data = EmpiricalDistribution(batch_data)
         path = GaussianConditionalProbabilityPath(
-            p_init, p_data, alpha = LinearAlpha(), beta = SquareRootBeta(c=1)
+            p_init, p_data, alpha = LinearAlpha(), 
+            beta = SquareRootBeta()
         ).to(self.device)
 
         z = path.sample_conditioning_variable(batch_size).to(torch.float32) # (batch_size, dim)
@@ -1426,7 +1441,7 @@ class ScoreTrainer(Trainer):
 
         score_field_learned = self.model(xt, t) # (batch_size, dim)
         score_field_target = path.conditional_score(xt, z, t) # (batch_size, dim)
-        return F.mse_loss(score_field_learned, score_field_target, reduction='sum')
+        return F.mse_loss(score_field_learned, score_field_target, reduction='mean')
         
 
 

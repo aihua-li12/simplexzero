@@ -204,9 +204,10 @@ class Plot():
         df_plot = df_plot.sample(n=n_subset, seed=seed)
         
         # Sort the sample ids according to their relative abundance in the most abundant taxa
-        taxa_cols = df_plot.columns[1:]
-        tax_cols_sums = df_plot[:,1:].to_numpy().sum(axis=0)
-        sort_by = taxa_cols[np.argmax(tax_cols_sums)] # most abundant taxa
+        # taxa_cols = df_plot.columns[1:]
+        # tax_cols_sums = df_plot[:,1:].to_numpy().sum(axis=0)
+        # sort_by = taxa_cols[np.argmax(tax_cols_sums)] # most abundant taxa
+        sort_by = top_taxa_list[2]
         df_plot_sorted = df_plot.sort(sort_by, descending=True)
         
         return df_plot_sorted
