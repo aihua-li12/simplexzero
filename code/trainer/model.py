@@ -1038,8 +1038,8 @@ class DiffusionSampler():
                  simplex_aware:bool=True):
 
         if p_init is None:
-            p_init = SymmetricDirichlet(score_model.input_dim)
-            # p_init = StandardNormal(score_model.input_dim)
+            # p_init = SymmetricDirichlet(score_model.input_dim)
+            p_init = StandardNormal(score_model.input_dim)
         
         if ts is None:
             ts = torch.linspace(0, 1, steps = n_steps) # (n_steps,)
@@ -1053,7 +1053,7 @@ class DiffusionSampler():
             assert len(sigma) == len(ts), "Sigma must have the same length as ts"
             self.sigmas = sigma.unsqueeze(-1).expand(-1, n_samples)
         else:
-            self.sigmas = 1-self.ts # (n_steps, n_samples)
+            self.sigmas = SquareRootBeta()(self.ts) # (n_steps, n_samples)
 
 
         self.x0 = p_init.sample(n_samples)
@@ -1427,12 +1427,12 @@ class ScoreTrainer(Trainer):
             loss of this batch
         """
         batch_size = batch_data.size(0)
-        p_init = SymmetricDirichlet(batch_data.size(1))
-        # p_init = StandardNormal(batch_data.size(1))
+        # p_init = SymmetricDirichlet(batch_data.size(1))
+        p_init = StandardNormal(batch_data.size(1))
         p_data = EmpiricalDistribution(batch_data)
+        alpha, beta = LinearAlpha(), SquareRootBeta()
         path = GaussianConditionalProbabilityPath(
-            p_init, p_data, alpha = LinearAlpha(), 
-            beta = SquareRootBeta()
+            p_init, p_data, alpha = alpha, beta = beta
         ).to(self.device)
 
         z = path.sample_conditioning_variable(batch_size).to(torch.float32) # (batch_size, dim)
