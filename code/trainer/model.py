@@ -648,6 +648,45 @@ class LinearConditionalProbabilityPath(ConditionalProbabilityPath):
 
 
 # ----- Diffusion Architecture ----- #
+class MLPBlock(nn.Module):
+    """MLP block module that takes in layer (batch_size, hidden_dim) and 
+    time embedding (batch_size, hidden_dim), and outputs layer (batch_size, hidden_dim).
+    Args:
+        hidden_dim: hidden dimension
+    """
+    def __init__(self, hidden_dim: int):
+        super().__init__()
+        self.fc1 = nn.Sequential(
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim)
+        )
+
+        self.fc2 = nn.Sequential(
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim)
+        )
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(hidden_dim)
+
+
+    def forward(self, x: torch.Tensor, t_embedding: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: (batch_size, hidden_dim)
+            t_embedding: (batch_size, hidden_dim)
+        Returns:
+            h+residual: (batch_size, hidden_dim)
+        """
+        h = self.norm1(x)
+        h = self.fc1(h)
+
+        h = h + t_embedding
+
+        h = self.norm2(h)
+        h = self.fc2(h)
+
+        return h + x
+
 class ScoreMatching(nn.Module):
     """Score matching architecture. 
     The forward pass inputs the current status x (batch_size, input_dim) 
@@ -670,8 +709,8 @@ class ScoreMatching(nn.Module):
         # Input layer
         self.input_layer = nn.Linear(input_dim, hidden_dim)
         # Residual blocks
-        self.residual_blocks = nn.ModuleList([
-            ResidualBlock(hidden_dim) for _ in range(n_resiblocks)
+        self.mlp_blocks = nn.ModuleList([
+            MLPBlock(hidden_dim) for _ in range(n_resiblocks)
         ])
         # Output layer
         self.output_norm = nn.LayerNorm(hidden_dim)
@@ -688,7 +727,7 @@ class ScoreMatching(nn.Module):
         t_embedding = self.t_emb(t) # (batch_size, hidden_dim)
         h = self.input_layer(x) # (batch_size, hidden_dim)
 
-        for block in self.residual_blocks:
+        for block in self.mlp_blocks:
             h = block(h, t_embedding)
 
         h = self.output_norm(h)
@@ -1086,7 +1125,7 @@ class Trainer(ABC):
     """This is the abstract trainer class for all generative models. 
     Each generative model just needs to specify its own get_batch_loss() method.
     """
-    def __init__(self, model:nn.Module, device:torch.device, cfg:Dict[str, Any]|None=None,
+    def __init__(self, model:nn.Module, device:torch.device|str, cfg:Dict[str, Any]|None=None,
                  logger:Logger|None=None, train_sampler=None, is_main_process:bool=True):
         super().__init__()
         self.model = model

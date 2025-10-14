@@ -284,6 +284,7 @@ class Plot():
         plt.tight_layout(rect=(0, 0, 0.9, 1))
         
         self._save(plot_name)
+        # plt.show()
         plt.close()
 
 
