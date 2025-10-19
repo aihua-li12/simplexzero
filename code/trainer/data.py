@@ -13,6 +13,7 @@ from pandas import DataFrame
 from torch.utils.data import Dataset, DataLoader
 import torch
 import polars as pl
+from skbio.stats.composition import ilr, clr, multi_replace
 
 # ----- Load data ----- #
 def preprocess(tax_level:str="Phylum", 
@@ -71,10 +72,11 @@ class AbundanceDataset(Dataset):
         if transformation is None:
             self.features = x
         if transformation == "clr":
-            x += 0.5 # pseudocount
-            log_x = torch.log(x)
-            self.features = log_x - torch.mean(log_x, dim=-1, keepdim=True)
-
+            x = multi_replace(x)
+            self.features = torch.Tensor(clr(x))
+        if transformation == 'ilr':
+            x = multi_replace(x)
+            self.features = torch.Tensor(ilr(x))
         
     def __len__(self):
         return self.features.shape[0]

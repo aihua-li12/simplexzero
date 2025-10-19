@@ -27,6 +27,8 @@ from matplotlib.artist import Artist
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.patches import Rectangle
 from sklearn.decomposition import PCA
+from scipy.spatial.distance import jensenshannon
+from skbio.diversity import alpha_diversity
 
 class Plot():
     """
@@ -207,7 +209,7 @@ class Plot():
         # taxa_cols = df_plot.columns[1:]
         # tax_cols_sums = df_plot[:,1:].to_numpy().sum(axis=0)
         # sort_by = taxa_cols[np.argmax(tax_cols_sums)] # most abundant taxa
-        sort_by = top_taxa_list[2]
+        sort_by = top_taxa_list[1]
         df_plot_sorted = df_plot.sort(sort_by, descending=True)
         
         return df_plot_sorted
@@ -237,8 +239,9 @@ class Plot():
         colors = plt.colormaps["RdYlBu"](np.linspace(0, 1, len(all_taxa_for_legend)))
         color_map = {taxon: color for taxon, color in zip(all_taxa_for_legend, colors)}
 
-        fig, axes = plt.subplots(1, len(self.x_list), figsize=(15*len(self.x_list), 5), sharey=True)
-
+        fig, axes = plt.subplots(2, 2, figsize=(10*2, 3.5*2), sharey=True)
+        axes = axes.flatten()
+        
         for i, ax in enumerate(axes):
             df_plot_sorted = self._prepare_stackedbar_df(
                 abundance, self.x_list[i], top_taxa_to_plot, n_subset, seed
@@ -262,6 +265,7 @@ class Plot():
         
         # Set y-label only for the first subplot
         axes[0].set_ylabel('Proportion', fontsize=18)
+        axes[2].set_ylabel('Proportion', fontsize=18)
         axes[0].set_ylim(0, 100)
         
         # --- Step 3: Create a single, shared legend for the entire figure ---
@@ -272,12 +276,18 @@ class Plot():
         sorted_labels = [lbl for lbl in all_taxa_for_legend if lbl in by_label]
         sorted_handles = [by_label[lbl] for lbl in sorted_labels]
         
-        legend = plt.legend(
-            sorted_handles, sorted_labels, 
-            title="Taxon", 
-            bbox_to_anchor=(1.01, 1.02),
-            loc='upper left', 
-            fontsize=16
+        handles, labels = axes[0].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+
+        sorted_labels = [lbl for lbl in all_taxa_for_legend if lbl in by_label]
+        sorted_handles = [by_label[lbl] for lbl in sorted_labels]
+
+        legend = fig.legend(
+            sorted_handles, sorted_labels,
+            title="Taxon",
+            loc='upper right',
+            bbox_to_anchor=(1.05, 0.96),  # move slightly outside top-left
+            fontsize=16,
         )
         legend.get_title().set_fontsize(18)
 
@@ -650,3 +660,44 @@ class PlotCardiovascular(Plot):
 
 
 
+
+
+def calculate_jsd(x_obs:torch.Tensor, x_recon:torch.Tensor):
+    """Calculates the Jensen-Shannon Divergence between two sets of distributions.
+    Args:
+        x_obs: The original data of shape (n_samples, n_features).
+        x_recon: The generated data of shape (n_samples, n_features).
+    Returns:
+        float: The Jensen-Shannon Divergence value. A lower value indicates more
+        similar distributions.
+    """
+    # 1. Calculate the mean distribution for each dataset
+    p_mean = np.mean(x_obs.numpy(), axis=0)
+    q_mean = np.mean(x_recon.numpy(), axis=0)
+
+    # 2. Compute the Jensen-Shannon distance (which is sqrt(JSD))
+    # The base of the logarithm is `e` by default.
+    js_distance = jensenshannon(p_mean, q_mean)
+
+    # 3. Square the distance to get the divergence
+    js_divergence = js_distance**2
+
+    return js_divergence
+
+def calculate_zeros(x_obs:torch.Tensor, x_recon:torch.Tensor, type:str):
+    """Calculate sparsity error"""
+
+    sparsity_obs = (x_obs.numpy() == 0).mean(-1)
+    if type == 'sza':
+        sparsity_recon = (x_recon.numpy() == 0).mean(-1)
+    else:
+        sparsity_recon = (x_recon.numpy() <= 0.01).mean(-1)
+    
+    return np.abs(np.mean(sparsity_obs) - np.mean(sparsity_recon))
+
+def calculate_alpha(x_obs:torch.Tensor, x_recon:torch.Tensor):
+
+    alpha_obs = alpha_diversity(metric='shannon', counts=x_obs.numpy()).values.mean()
+    alpha_recon = alpha_diversity(metric='shannon', counts=x_recon.numpy()).values.mean()
+
+    return np.abs(alpha_obs-alpha_recon)

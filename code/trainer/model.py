@@ -95,7 +95,7 @@ class Sampleable(ABC):
         pass
     
 
-class SymmetricDirichlet(torch.nn.Module, Sampleable):
+class Dirichlet(torch.nn.Module, Sampleable):
     """Symmetric Dirichlet distribution of d features.
     Args:
         dirich_dim: dimension of the Dirichlet distribution. 
@@ -387,8 +387,11 @@ class FlowMatching(nn.Module):
         # Input layer
         self.input_layer = nn.Linear(input_dim, hidden_dim)
         # Residual blocks
-        self.residual_blocks = nn.ModuleList([
-            ResidualBlock(hidden_dim) for _ in range(n_resiblocks)
+        # self.residual_blocks = nn.ModuleList([
+        #     ResidualBlock(hidden_dim) for _ in range(n_resiblocks)
+        # ])
+        self.mlp_blocks = nn.ModuleList([
+            MLPBlock(hidden_dim) for _ in range(n_resiblocks)
         ])
         # Output layer
         self.output_norm = nn.LayerNorm(hidden_dim)
@@ -405,7 +408,9 @@ class FlowMatching(nn.Module):
         t_embedding = self.t_emb(t) # (batch_size, hidden_dim)
         h = self.input_layer(x) # (batch_size, hidden_dim)
 
-        for block in self.residual_blocks:
+        # for block in self.residual_blocks:
+        #     h = block(h, t_embedding)
+        for block in self.mlp_blocks:
             h = block(h, t_embedding)
 
         h = self.output_norm(h)
@@ -547,7 +552,7 @@ class FlowSampler():
                  simplex_aware:bool=True):
         
         if p_init is None:
-            p_init = SymmetricDirichlet(model.input_dim)
+            p_init = Dirichlet(model.input_dim)
             # p_init = StandardNormal(model.input_dim)
 
         if ts is None:
@@ -1077,7 +1082,7 @@ class DiffusionSampler():
                  simplex_aware:bool=True):
 
         if p_init is None:
-            # p_init = SymmetricDirichlet(score_model.input_dim)
+            # p_init = Dirichlet(score_model.input_dim)
             p_init = StandardNormal(score_model.input_dim)
         
         if ts is None:
@@ -1444,7 +1449,7 @@ class FlowTrainer(Trainer):
             loss of this batch
         """
         batch_size = batch_data.size(0)
-        p_init = SymmetricDirichlet(batch_data.size(1))
+        p_init = Dirichlet(batch_data.size(1))
         # p_init = StandardNormal(batch_data.size(1))
         p_data = EmpiricalDistribution(batch_data)
         path = LinearConditionalProbabilityPath(p_init, p_data)
@@ -1466,7 +1471,7 @@ class ScoreTrainer(Trainer):
             loss of this batch
         """
         batch_size = batch_data.size(0)
-        # p_init = SymmetricDirichlet(batch_data.size(1))
+        # p_init = Dirichlet(batch_data.size(1))
         p_init = StandardNormal(batch_data.size(1))
         p_data = EmpiricalDistribution(batch_data)
         alpha, beta = LinearAlpha(), SquareRootBeta()
