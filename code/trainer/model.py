@@ -236,6 +236,10 @@ class VAE(nn.Module):
 
 
 
+
+
+
+
 # ----- GAN Architecture ----- #
 class Generator(nn.Module):
     """Generator of GAN

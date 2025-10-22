@@ -17,7 +17,7 @@ np.random.seed(1)
 
 # ----- 1. Load data -----
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-abundance, metadata = preprocess(tax_level="Genus", 
+abundance, metadata = preprocess(tax_level="Class", 
                                  agg_abundance_dir="../../data/aggregation",
                                  metadata_dir="../../data/matched")
 metadata.set_index("#SampleID", inplace=True)
@@ -168,7 +168,7 @@ def diffusion_helper(loader, type:str):
     score_model = ScoreMatching(loader.dataset.dim, hidden_dim=512, time_emb_dim=128, n_resiblocks=1)
     score_trainer = ScoreTrainer(score_model, device)
     score_losses = score_trainer.train(n_epochs, train_loader=loader, lr=1e-3)
-    ts = torch.linspace(0, 0.95, 1000)
+    ts = torch.linspace(0.05, 0.95, 1000)
     sigma = None
     diffusion_sampler = DiffusionSampler(score_model, n_samples, ts=ts, sigma=sigma, simplex_aware=False)
     diffusion_recon = diffusion_sampler.simulate()
@@ -178,21 +178,20 @@ def diffusion_helper(loader, type:str):
         return torch.softmax(diffusion_recon, dim=-1)
 
 
-
 data = abundance.values.T
 scaler = StandardScaler().fit(data)
 data_scaled = pd.DataFrame(scaler.fit_transform(data)).T
 
 dataset_sza = AbundanceDataset(data_scaled)
-dataset_clr = AbundanceDataset(data_scaled, transformation='clr')
+# dataset_clr = AbundanceDataset(data_scaled, transformation='clr')
 
 loader_creator = AbundanceLoader(batch_size=128, drop_last=False)
 loader_sza = loader_creator.create_loader(dataset_sza)
-loader_clr = loader_creator.create_loader(dataset_clr)
+# loader_clr = loader_creator.create_loader(dataset_clr)
 # x = batch_data = next(iter(loader_sza))
 
 
-n_epochs = 15
+n_epochs = 10
 
 
 diffusion_recon_sza = diffusion_helper(loader_sza, "sza").numpy()
@@ -219,16 +218,15 @@ plot.stacked_bar(abundance, 5)
 
 
 
-# samples_dict = {
-#     'Observed': x_obs,
-#     'Generated (VAE)': vae_recon_sza,
-#     'Generated (GAN)': gan_recon_sza,
-#     'Generated (Flow)': flow_recon_sza
-# }
-# plot = Plot(samples_dict, "../../result/comparison")
-# plot.mean_variance()
-
-# plot.stacked_bar(abundance, 5)
+samples_dict = {
+    'Observed': x_obs,
+    'Generated (VAE)': vae_recon_sza,
+    'Generated (GAN)': gan_recon_sza,
+    'Generated (Diffusion)': diffusion_recon_sza
+}
+plot = Plot(samples_dict, "../../result/comparison")
+plot.mean_variance()
+plot.stacked_bar(abundance, 5)
 
 
 

@@ -26,9 +26,12 @@ from typing import cast, Iterable
 from matplotlib.artist import Artist
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.patches import Rectangle
+import matplotlib.patheffects as pe
 from sklearn.decomposition import PCA
 from scipy.spatial.distance import jensenshannon
 from skbio.diversity import alpha_diversity
+
+
 
 class Plot():
     """
@@ -209,7 +212,7 @@ class Plot():
         # taxa_cols = df_plot.columns[1:]
         # tax_cols_sums = df_plot[:,1:].to_numpy().sum(axis=0)
         # sort_by = taxa_cols[np.argmax(tax_cols_sums)] # most abundant taxa
-        sort_by = top_taxa_list[1]
+        sort_by = top_taxa_list[2]
         df_plot_sorted = df_plot.sort(sort_by, descending=True)
         
         return df_plot_sorted
@@ -298,11 +301,6 @@ class Plot():
         plt.close()
 
 
-
-
-
-
-
     def sparsity(self, plot_name:str="sparsity"):
         plt.figure(figsize=(5, 3))
         plt.title('Sparsity (number of zeros)', fontsize=12)
@@ -363,6 +361,171 @@ class Plot():
 
 
 
+class PlotTree(Plot):
+    """Plot the tree on a disk
+    Args:
+        tree: tree produced by DepthFirstSearch
+    """
+
+    def __init__(self, tree:dict, plot_save_dir:str|None="../../result"):
+        super().__init__(plot_save_dir=plot_save_dir)
+        self.tree = tree
+        self.taxa_levels = ["Domain", "Phylum", "Class", "Order", "Family", "Genus"]
+
+
+    def plot_matplotlib_radial(self, plot_name:str="tree"):
+        style = "tableau-colorblind10"
+        plt.style.use(style)
+        plt.rcParams.update({
+            "font.family": "serif",
+            "font.serif": ["Times New Roman"],
+            "mathtext.fontset": "stix",
+        })
+
+        fig, ax = plt.subplots(figsize=(12, 12))
+        ax.set_aspect('equal')
+        ax.axis('off')
+        class_level_index = self.taxa_levels.index('Class')
+        unique_names_to_color = self._get_unique_taxa_names_up_to_level(
+            self.tree, class_level_index
+        )
+
+        my_colors = ["slategray", "tab:blue", 
+                     "cornflowerblue", "lightskyblue",
+                     "yellowgreen", 
+                     "gold", "orange", 
+                     "orangered", "salmon",
+                     "mediumpurple", "plum"]
+        colormap = LinearSegmentedColormap.from_list("my_custom_cmap", my_colors)
+        colors = colormap(np.linspace(0, 1, len(unique_names_to_color)))
+        self.color_map_dict = {
+            name: color for name, color in zip(sorted(list(unique_names_to_color)), colors)
+        }
+
+        radii = {}
+        radii['Domain'] = 0.9
+        radii['Phylum'] = radii['Domain'] + 4
+        radii['Class'] = radii['Phylum'] + 3
+        radii['Order'] = radii['Class'] + 1.5
+        radii['Family'] = radii['Order'] + 2
+        radii['Genus'] = radii['Family'] + 3.5
+
+        node_sizes = {
+            "Domain": 300, "Phylum": 200, "Class": 100,
+            "Order": 80, "Family": 50, "Genus": 50
+        }
+        text_sizes = {
+            "Domain": 17, "Phylum": 12, "Family": 16, "Genus": 16,
+        }
+
+        self._draw_node_recursively(
+            ax, self.tree, (0, 0), self.taxa_levels, radii,
+            node_sizes, text_sizes, 0, 2*np.pi
+        )
+        fig.subplots_adjust(top=0.85, bottom=0.15)
+        self._save(plot_name)
+        print(f"✅ Final radial tree saved to '{plot_name}'")
+        plt.show()
+
+    def _get_unique_taxa_names_up_to_level(
+            self, node: dict, target_level: int, current_level: int = 0
+    ) -> set:
+        if current_level > target_level: return set()
+        names = set()
+        for name, child_node in node.items():
+            if name != '_asv_ids':
+                names.add(name)
+                names.update(
+                    self._get_unique_taxa_names_up_to_level(
+                        child_node, target_level, current_level+1
+                    )
+                )
+        return names
+
+    def _count_terminal_nodes(self, node: dict) -> int:
+        children = {k: v for k, v in node.items() if k != '_asv_ids'}
+        if not children:
+            return 1
+        count = 0
+        for child_node in children.values():
+            count += self._count_terminal_nodes(child_node)
+        return count
+
+    def _draw_node_recursively(
+        self, ax, node: dict, parent_pos: tuple,
+        levels: list, radii: dict, node_sizes: dict, text_sizes: dict,
+        start_angle: float, end_angle: float, level_idx: int = 0,
+        branch_color: str = 'gray'
+    ):
+        if level_idx >= len(levels): return
+
+        current_level_name = levels[level_idx]
+        radius = radii[current_level_name]
+
+        children = {k: v for k, v in node.items() if k != '_asv_ids'}
+        if not children: return
+
+        total_terminals = self._count_terminal_nodes(node)
+        if total_terminals == 0: return
+
+        current_angle = start_angle
+        class_level_index = levels.index('Class')
+
+        for name, child_node in sorted(children.items()):
+            child_terminals = self._count_terminal_nodes(child_node)
+            angle_slice = (end_angle - start_angle) * (child_terminals / total_terminals)
+            angle = current_angle + angle_slice / 2
+            x = radius * np.cos(angle)
+            y = radius * np.sin(angle)
+
+            node_color = branch_color
+            if level_idx <= class_level_index:
+                node_color = self.color_map_dict.get(name, branch_color)
+
+            ax.plot([parent_pos[0], x], [parent_pos[1], y],
+                    color=node_color, alpha=0.7, lw=0.8, zorder=1)
+
+            if current_level_name in ["Domain", "Phylum"]:
+                # For 'Domain' and 'Phylum', draw a rounded rectangle with text inside
+                font_size = text_sizes.get(current_level_name, 18)
+                ax.text(x, y, name, ha='center', va='center',
+                        fontsize=font_size, color='white', weight='bold',
+                        zorder=level_idx+5,
+                        path_effects=[pe.withStroke(linewidth=1, foreground='black')],
+                        bbox=dict(
+                            boxstyle='round,pad=0.3',
+                            fc=node_color,
+                            ec='black',
+                            lw=0.8
+                        ))
+            else:
+                # For all other levels, draw the standard scatter plot circle
+                ax.scatter(x, y, s=node_sizes.get(current_level_name, 20),
+                           c=[node_color], zorder=level_idx+5, ec='black', lw=0.8)
+
+            grand_children = {k: v for k, v in child_node.items() if k != '_asv_ids'}
+            is_end_node = not grand_children
+
+            if is_end_node:
+                text_offset = 1.15
+                text_x = x * text_offset
+                text_y = y * text_offset
+                rotation = np.rad2deg(angle)
+                ha = 'left'
+                font_size = text_sizes.get(current_level_name, 7)
+                if 90 < rotation < 270:
+                    rotation -= 180
+                    ha = 'right'
+                ax.text(text_x, text_y, name, ha=ha, va='center',
+                        fontsize=font_size, rotation=rotation,
+                        rotation_mode='anchor', color=node_color)
+            
+            self._draw_node_recursively(
+                ax, child_node, (x, y), levels, radii,
+                node_sizes, text_sizes, current_angle, current_angle+angle_slice,
+                level_idx+1, branch_color=node_color
+            )
+            current_angle += angle_slice
 
 
 
@@ -695,9 +858,9 @@ def calculate_zeros(x_obs:torch.Tensor, x_recon:torch.Tensor, type:str):
     
     return np.abs(np.mean(sparsity_obs) - np.mean(sparsity_recon))
 
-def calculate_alpha(x_obs:torch.Tensor, x_recon:torch.Tensor):
+# def calculate_alpha(x_obs:torch.Tensor, x_recon:torch.Tensor):
 
-    alpha_obs = alpha_diversity(metric='shannon', counts=x_obs.numpy()).values.mean()
-    alpha_recon = alpha_diversity(metric='shannon', counts=x_recon.numpy()).values.mean()
+#     alpha_obs = alpha_diversity(metric='shannon', counts=x_obs.numpy()).values.mean()
+#     alpha_recon = alpha_diversity(metric='shannon', counts=x_recon.numpy()).values.mean()
 
-    return np.abs(alpha_obs-alpha_recon)
+#     return np.abs(alpha_obs-alpha_recon)
