@@ -223,11 +223,13 @@
             
             <div class="content has-text-justified">
                 <p>
-                    Our method seamlessly integrates with existing generative modeling frameworks to enable the direct generation of sparse compositional data. This approach yields a 4x speedup over complex manifold-specific models while improving generation quality by 81% against traditional transformation-based baselines. We provide the illustration of four methods here. 
+                    Our method seamlessly integrates with existing generative modeling frameworks to enable the direct generation of sparse compositional data. This approach yields a 4x speedup over complex manifold-specific models while improving generation quality by 81% against traditional transformation-based baselines. 
                 </p>
             </div>
     
-            <h3 class="title is-6">Flow Matching: Direct flow in the vector field towards target probability simplex</h3>
+            <h3 class="title is-6">
+              <b>Flow Matching:</b> <span style="font-weight: normal;">Direct flow in the vector field towards target probability simplex</span>
+            </h3>
             <div class="content has-text-centered">
                 <img src="./result/static/flow_true.gif" alt="True flow GIF" style="max-width: 60%; height: auto; display: block; margin: 0 auto;">
             </div>
@@ -236,48 +238,19 @@
             </div>
             <br/>
 
-            <h3 class="title is-6">Denoising Diffusion Model: Diffusion with efficient projection on the probability simplex</h3>
+            <h3 class="title is-6">
+              <b>Denoising Diffusion Model:</b> <span style="font-weight: normal;">Diffusion with efficient projection on the probability simplex</span>
+            </h3>
             <div class="content has-text-centered">
                 <img src="./result/static/diffusion_true.gif" alt="True diffusion GIF" style="max-width: 60%; height: auto; display: block; margin: 0 auto;">
             </div>
             <div class="content has-text-centered">
                 <img src="./result/static/diffusion_learned.gif" alt="Learned diffusion GIF" style="max-width: 60%; height: auto; display: block; margin: 0 auto;">
             </div>
-        </div>
 
-
-        <!-- Variational AutoEncoder Section -->
-        <div>
-            <h2 class="title is-3">Generative Adversarial Network</h2>
-
-            <!-- This is the two-column layout for the VAE section -->
-            <div class="columns is-vcentered"> <!-- is-vcentered vertically aligns the columns -->
-
-                <!-- Left Column: Plot/Image -->
-                <div class="column is-half">
-                    <div class="content has-text-centered">
-                        <img src="./result/static/cardio_pcoa.png" alt="Variational AutoEncoder Plot">
-                    </div>
-                </div>
-
-                <!-- Right Column: Description -->
-                <div class="column is-half">
-                    <div class="content has-text-justified">
-                        <p>
-                            GAN
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Divider between major sections -->
-        <hr class="is-divider">
-
-        <!-- Variational AutoEncoder Section -->
-        <div>
-            <h2 class="title is-3">Variational AutoEncoder</h2>
-
+            <h3 class="title is-6">
+              <b>Variational AutoEncoder:</b> <span style="font-weight: normal;">Enhanced Classification in Representation Space</span>
+            </h3>
             <!-- This is the two-column layout for the VAE section -->
             <div class="columns is-vcentered"> <!-- is-vcentered vertically aligns the columns -->
 
@@ -290,13 +263,23 @@
 
                 <!-- Right Column: Description -->
                 <div class="column is-half">
-                    <div class="content has-text-justified">
-                        <p>
-                            Variational AutoEncoder (VAE). 
-                        </p>
+                    <div class="content has-text-centered">
+                        <img src="./result/static/cardio_pca_clr.png" alt="Variational AutoEncoder Plot">
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Divider between major sections -->
+        <hr class="is-divider">
+  
+        <div>
+            <h2 class="title is-3">High-Fidelity Generation</h2>
+            <div class="content has-text-centered">
+                <p class="is-size-5 has-text-weight-semibold">Stacked-Bar Plot of Compositional Data</p>
+                <img src="./result/static/stacked-bar.png" alt="tree" style="max-width: 50%; height: auto; display: block; margin: 0 auto;">
+            </div>
+            <br/>
         </div>
 
     </div> <!-- End of container -->
