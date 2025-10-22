@@ -196,16 +196,16 @@
 
             <div class="columns is-vcentered"> <!-- is-vcentered vertically aligns the columns -->
 
-                <!-- Left Column: Plot/Image -->
+                <!-- Left Column: Description -->
                 <div class="column is-half">
-                    <div class="content has-text-centered">
+                    <div class="content" style="text-align: left; vertical-align: top;">
                         <p>
                           We introduce <b>Simplex-Zero Activation Function</b>, a novel operator designed to produce outputs that are simultaneously non-negative, compositional (sum-to-one), and sparse. By also maintaining Lipschitz continuity, our function ensures stable and efficient training. This approach directly contrasts with traditional pre-processing transformations, which introduce geometric distortions and irreversibly destroy the data's natural sparsity.
                         </p>
                     </div>
                 </div>
 
-                <!-- Right Column: Description -->
+                <!-- Right Column: Plot -->
                 <div class="column is-half">
                     <div class="content has-text-centered">
                         <img src="./result/static/sza.png" alt="sza">
@@ -213,10 +213,12 @@
                 </div>
             </div>
         </div>
+
+        <!-- Divider between major sections -->
+        <hr class="is-divider">
         
-        <!-- Probability Path Section -->
         <div>
-            <h2 class="title is-3">Probability Path</h2>
+            <h2 class="title is-3">Contribution 3: Generative Models for Sparse Compositional Data</h2>
 
             <h3 class="title is-4">Flow matching</h3>
             <div class="content has-text-justified">
@@ -252,8 +254,6 @@
             </div>
         </div>
 
-        <!-- Divider between major sections -->
-        <hr class="is-divider">
 
         <!-- Variational AutoEncoder Section -->
         <div>
